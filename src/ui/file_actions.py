@@ -155,12 +155,34 @@ class LoadSaveMixin:
                                    parent=self.root)
             return False
 
+        # 작업자 REVIEW: 이슈 내용 기록 필수 (검수자가 보고 판단할 수 있도록)
+        if (self.role != C.ROLE_REVIEWER and self.status_var.get() == "REVIEW"
+                and not self.note.get("1.0", "end-1c").strip()):
+            msg = ("REVIEW는 검수자에게 확인을 요청하는 상태입니다.\n"
+                   "→ Issue/Note에 어떤 점이 애매하거나 문제인지 적어주세요.\n"
+                   "   예) 나뭇가지인지 파 줄기인지 구분이 어려움")
+            messagebox.showwarning("작업 이슈 기록", msg, parent=self.root)
+            self.set_message(msg.split("\n")[0], "error")
+            return False
+
         if self.role == C.ROLE_REVIEWER:
             problem = self._check_review_rules(name)
             if problem:
                 messagebox.showwarning("검수 규칙", problem, parent=self.root)
                 self.set_message(problem.split("\n")[0], "error")
                 return False
+
+        # 다른 이미지 폴더의 같은 이름 결과가 저장 폴더에 있으면 덮어쓰기 전에 확인
+        other = self.ws.overwrite_conflict(name)
+        if other is not None and not messagebox.askyesno(
+                "같은 이름의 다른 결과",
+                f"'{name}' 이름으로 저장된 다른 이미지 폴더의 결과가 있습니다.\n"
+                f"  기존 결과의 이미지 폴더: {other or '(기록 없음)'}\n"
+                f"  지금 연 이미지 폴더   : {self.ws.dataset}\n\n"
+                "저장하면 기존 결과를 덮어씁니다. 계속할까요?",
+                parent=self.root):
+            self.set_message("저장을 취소했습니다. (다른 폴더의 같은 이름 결과 보존)", "error")
+            return False
 
         auto_confirmed = self.pending_index() is not None
         if auto_confirmed:
@@ -169,8 +191,8 @@ class LoadSaveMixin:
             self.selected = None
 
         self._loading = True    # 기본값 채울 때 dirty 트리거 방지
-        if self.role != C.ROLE_REVIEWER:
-            self.status_var.set("EDITED")      # 작업자 결과는 항상 EDITED
+        if self.role != C.ROLE_REVIEWER and self.status_var.get() not in C.WORKER_STATUSES:
+            self.status_var.set("EDITED")      # 작업자: REVIEW를 고르지 않았으면 EDITED
         if not self.scene_var.get():
             self.scene_var.set("kimchi_with_target" if self.boxes else "normal_kimchi")
         self._loading = False
@@ -183,6 +205,7 @@ class LoadSaveMixin:
         try:
             saved = self.ws.save_label(name, self.boxes, self.img_w, self.img_h, meta.status)
             self.ws.own_store.update(meta)
+            note_path = self.ws.save_issue_note(meta) if self.role != C.ROLE_REVIEWER else None
         except OSError as ex:
             messagebox.showerror("저장 실패", f"{name}\n{ex}", parent=self.root)
             return False
@@ -199,7 +222,8 @@ class LoadSaveMixin:
         self.refresh_all()
         extra = " (미확정 BBox 자동 확정)" if auto_confirmed else ""
         self.set_message(f"저장 완료: {self.ws.rel(saved)} · BBox {len(self.boxes)}개 · "
-                         f"{meta.status}{extra}", "success")
+                         f"{meta.status}{extra}"
+                         + (f" · 이슈노트: {self.ws.rel(note_path)}" if note_path else ""), "success")
         return True
 
     def save_and_next(self):
