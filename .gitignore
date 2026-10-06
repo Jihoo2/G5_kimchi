@@ -1,0 +1,39 @@
+# Python
+
+pycache/ _.pyc_.pyo
+
+# Virtual Environment
+
+.venv/ venv/
+
+# VS Code
+
+.vscode/
+
+# Jupyter
+
+.ipynb_checkpoints/
+
+# OS
+
+.DS_Store Thumbs.db
+
+# Dataset
+
+data/raw/ data/train/ data/val/ data/test/
+
+# Model Weight
+
+_.pt_.onnx *.engine
+
+# Training outputs
+
+runs/
+
+# Logs
+
+*.log
+
+# Cache
+
+.cache/
