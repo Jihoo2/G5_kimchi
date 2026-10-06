@@ -1,7 +1,7 @@
 """[카테고리] 검수 기록 — label_status.csv 의 한 행(ImageMeta)과 CSV 파일 관리(StatusStore)
 
     ImageMeta     filename, status, assignee(작업자), reviewer(검수자), scene_type, note,
-                  num_boxes, updated_at
+                  num_boxes, updated_at, source(어느 이미지 폴더의 결과인지)
     StatusStore   폴더 하나의 label_status.csv
         load()       CSV → {파일명: ImageMeta}
         update()     저장 시각 기록 → CSV 전체 다시 쓰기 (Excel 한글 호환 utf-8-sig)
@@ -29,10 +29,11 @@ class ImageMeta:
     note: str = ""
     num_boxes: int = 0
     updated_at: str = ""
+    source: str = ""        # 어느 이미지 폴더의 결과인지 (최상위 기준 경로). 비어 있으면 예전 기록
 
 
 CSV_FIELDS = ["filename", "status", "assignee", "reviewer",
-              "scene_type", "note", "num_boxes", "updated_at"]
+              "scene_type", "note", "num_boxes", "updated_at", "source"]
 
 
 class StatusStore:
@@ -67,6 +68,7 @@ class StatusStore:
                     note=row.get("note") or "",
                     num_boxes=n,
                     updated_at=row.get("updated_at") or "",
+                    source=row.get("source") or "",
                 )
 
     def get(self, filename: str):
@@ -94,6 +96,7 @@ class StatusStore:
                     "assignee": m.assignee, "reviewer": m.reviewer,
                     "scene_type": m.scene_type, "note": m.note,
                     "num_boxes": m.num_boxes, "updated_at": m.updated_at,
+                    "source": m.source,
                 })
         atomic_write(self.path, write, encoding="utf-8-sig", newline="")
 

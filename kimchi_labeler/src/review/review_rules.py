@@ -26,7 +26,18 @@ class ReviewMixin:
         reasons = self.ws.cross_review_reasons(name)
         if not reasons:
             m = self.ws.reviewer_store.get(name)
-            self.cr_lbl.configure(text="" if m else "2단계 검수 대기 (PASS / EDITED / REVIEW)")
+            if m:
+                self.cr_lbl.configure(text="")
+                return
+            w = self.ws.worker_store.get(name)
+            if w and w.status == "REVIEW":             # 작업자가 확인을 요청한 이미지
+                issue = (w.note or "").strip().replace("\n", " ")
+                issue = issue if len(issue) <= 40 else issue[:40] + "…"
+                self.cr_lbl.configure(text=f"작업자 REVIEW 요청 ({w.assignee}): {issue}\n"
+                                           "2단계 검수 대기 (PASS / EDITED / REVIEW)")
+                self.set_message(f"[작업자 REVIEW 요청] {w.assignee}: {issue}")
+            else:
+                self.cr_lbl.configure(text="2단계 검수 대기 (PASS / EDITED / REVIEW)")
             return
         m = self.ws.reviewer_store.get(name)
         who = f" · 처리: {m.reviewer}" if m and m.reviewer else ""
@@ -97,14 +108,18 @@ class ReviewMixin:
 
     def _refresh_save_dir(self):
         """현재 상태로 저장했을 때의 저장 위치 안내 문구 갱신"""
-        if self.role == C.ROLE_REVIEWER:
-            st = self.status_var.get()
+        st = self.status_var.get()
+        if self.ws is None:
+            text = ""
+        elif self.role == C.ROLE_REVIEWER:
             if st:
                 with_img = C.COPY_IMAGE_REVIEWER and st not in C.REVIEWER_NO_IMAGE_STATUSES
-                text = (f"저장 위치: {C.REVIEWER_DIR}/{C.STATUS_DIRS.get(st, '')}/ "
+                text = (f"저장 위치: {self.ws.rel(self.ws.target_dir(st))}/ "
                         f"({'이미지+TXT' if with_img else 'TXT만'})")
             else:
                 text = "저장 전 상태 선택 필요"
         else:
-            text = f"저장 위치: {C.WORKER_DIR}/"
+            text = f"저장 위치: {self.ws.rel(self.ws.worker_dir)}/"
+            if st == "REVIEW":
+                text += "  (REVIEW: 검수자 확인 요청)"
         self.save_dir_lbl.configure(text=text)

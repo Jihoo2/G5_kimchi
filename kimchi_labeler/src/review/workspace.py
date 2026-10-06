@@ -1,24 +1,31 @@
-"""[카테고리] 저장 위치 규칙 — 역할·상태에 따라 어느 폴더에서 읽고 어디에 저장할지 결정
+"""[카테고리] 저장 위치 규칙 — 역할·상태에 따라 어디서 읽고 어디에 저장할지 결정
 
-폴더 구조
-    <원본 이미지 폴더>/          *.jpg (+ 받아온 *.txt) — 절대 수정하지 않음
-    <main.py 폴더 = configs/settings.yaml 의 output_root>/
-      ├─ 작업자/                 이미지 복사본 + *.txt + label_status.csv
-      └─ 검수자/                 label_status.csv
+폴더 구조 (configs/settings.yaml 의 output 기본값)
+    <이미지 폴더>/                 *.jpg (+ 받아온 *.txt) — 절대 수정하지 않음 (어디에 있든 상관없음)
+    <main.py 가 있는 최상위 폴더>/
+      ├─ 작업자/                   이미지 복사본 + *.txt + label_status.csv
+      │    └─ 이슈노트/            작업자 Issue/Note 메모 (<이미지이름>.txt, 메모장으로 열림)
+      └─ 검수자/                   label_status.csv
            ├─ pass/  edited/  review/  reviewed/      *.txt (상태별)
 
+폴더끼리 섞이지 않게 하는 방법
+    결과는 작업자/ 에 바로 저장하고, label_status.csv 의 source 칸에 '어느 이미지 폴더의 결과인지' 기록
+    SourceView 가 지금 연 이미지 폴더의 기록만 보여줌
+    → 다른 폴더에 같은 이름의 이미지가 있어도 그 결과를 불러오지 않음
+    → 같은 이름으로 저장하려 하면 덮어쓰기 전에 확인 창 (overwrite_conflict)
+
 의사 코드
-    resolve_label(이미지):        화면에 불러올 TXT 찾기
+    resolve_label(이미지):        화면에 불러올 TXT 찾기 (다른 폴더 결과는 건너뜀)
         작업자: 작업자/ → 원본 폴더
         검수자: 검수자/<상태>/ → 작업자/ → 원본 폴더
     save_label(이미지, 박스, 상태):
         저장 폴더 = 작업자/  또는  검수자/<상태>/   (없으면 생성, 있으면 그대로 사용)
-        (작업자) 원본 이미지를 복사본으로 저장 — 원본은 그대로
+        (작업자) 원본 이미지 복사본 저장 — 원본은 그대로
         TXT 저장
         (검수자) 다른 상태 폴더에 남아 있던 같은 이미지 결과 삭제 → 한 곳에만 존재
+    save_issue_note(기록):        Note 내용 → 작업자/이슈노트/<이미지이름>.txt (비우면 파일 삭제)
     cross_review_reasons(이미지):  6.3 100% Cross Review 대상인지
         검수 기록이 EDITED / REVIEW, 또는 Class 4 발견, 또는 Empty Label → 사유 목록
-        검수 기록 없음(2단계 전) 또는 REVIEWED → []
 """
 from __future__ import annotations
 
@@ -27,9 +34,108 @@ import shutil
 import tempfile
 
 from src import config as C
+from src.common.fileio import atomic_write
 from src.review.status_store import StatusStore
 from src.yolo.yolo_loader import parse_yolo_line
 from src.yolo.yolo_writer import save_yolo
+
+
+def dataset_folder(folder: str) -> str:
+    """연 폴더가 결과 폴더(작업자/…, 검수자/…)이면 원래 이미지 폴더 경로로 되돌림. 아니면 그대로.
+        <상위>/작업자/<데이터셋>                → <상위>/<데이터셋>
+        <상위>/검수자/<데이터셋>[/<상태>]       → <상위>/<데이터셋>
+        <이미지폴더>/작업자 · 검수자[/<상태>]    → <이미지폴더>   (image_folder 방식 / 예전 구조)"""
+    f = os.path.normpath(os.path.abspath(folder))
+    name = os.path.basename(f)
+    parent = os.path.dirname(f)
+    grand = os.path.dirname(parent)
+    roles = (C.WORKER_DIR, C.REVIEWER_DIR)
+    statuses = set(C.STATUS_DIRS.values())
+    if name in statuses and os.path.basename(parent) == C.REVIEWER_DIR:          # 이미지폴더/검수자/<상태>
+        return grand
+    if name in statuses and os.path.basename(grand) == C.REVIEWER_DIR:           # 상위/검수자/<데이터셋>/<상태>
+        return os.path.join(os.path.dirname(grand), os.path.basename(parent))
+    if os.path.basename(parent) in roles:                                         # 상위/작업자/<데이터셋>
+        return os.path.join(grand, name)
+    if name in roles:                                                             # 이미지폴더/작업자
+        return parent
+    return f
+
+
+def output_root(image_folder: str) -> str:
+    """작업자/·검수자/ 를 만들 위치 = 기준 폴더 + 상대 경로 (configs/settings.yaml 의 output)
+        project      : <main.py 가 있는 최상위 폴더>/<path>   (기본)
+        parent       : <이미지 폴더의 바로 위 폴더>/<path>
+        image_folder : <이미지 폴더>/<path>
+        path 가 절대 경로면 그 경로를 그대로 사용"""
+    if os.path.isabs(C.OUTPUT_PATH):
+        return os.path.normpath(C.OUTPUT_PATH)
+    if C.OUTPUT_BASE == "project":
+        base = C.PROJECT_DIR
+    else:
+        data = dataset_folder(image_folder)
+        base = os.path.dirname(data) if C.OUTPUT_BASE == "parent" else data
+    return os.path.normpath(os.path.join(base, C.OUTPUT_PATH))
+
+
+def _inside(path: str, parent: str) -> bool:
+    return os.path.commonpath([path, parent]) == parent and path != parent
+
+
+def dataset_key(image_folder: str, root: str):
+    """이미지 폴더를 구분하는 이름 (CSV 의 source 칸, per_dataset 일 때는 하위 폴더 이름)
+        1) 결과 폴더(<root>/작업자, <root>/검수자 …)를 직접 열었으면
+           - per_dataset 이면 그 안의 경로, 아니면 None (각 기록에 적힌 source 를 그대로 따름)
+        2) 이미지 폴더가 최상위(main.py 폴더) 안에 있으면 최상위 기준 상대 경로 (예: data/임시데이터)
+        3) 그 밖이면 절대 경로"""
+    f = os.path.normpath(os.path.abspath(image_folder))
+    statuses = set(C.STATUS_DIRS.values())
+    for role in (C.WORKER_DIR, C.REVIEWER_DIR):
+        role_dir = os.path.join(root, role)
+        if f == role_dir or _inside(f, role_dir):
+            if not C.OUTPUT_PER_DATASET or f == role_dir:
+                return None
+            parts = os.path.relpath(f, role_dir).split(os.sep)
+            if role == C.REVIEWER_DIR and len(parts) > 1 and parts[-1] in statuses:
+                parts = parts[:-1]
+            if role == C.REVIEWER_DIR and parts == [p for p in parts if p in statuses]:
+                return None
+            return os.path.join(*parts)
+    data = dataset_folder(f)
+    if _inside(data, C.PROJECT_DIR):
+        return os.path.relpath(data, C.PROJECT_DIR)
+    return data if not C.OUTPUT_PER_DATASET else os.path.basename(data)
+
+
+class SourceView:
+    """StatusStore 를 '지금 연 이미지 폴더의 기록'만 보이게 감싼 것.
+    같은 파일 이름이라도 다른 이미지 폴더(source)의 기록은 없는 것처럼 처리한다.
+    source 가 None 이면(결과 폴더를 직접 연 경우) 모든 기록을 그대로 보여준다."""
+
+    def __init__(self, store, source, source_of):
+        self.store = store
+        self.source = source
+        self._source_of = source_of          # 결과 폴더를 직접 열었을 때 저장할 source 를 찾는 함수
+        self.path = store.path
+
+    def matches(self, meta) -> bool:
+        """이 기록이 지금 연 이미지 폴더의 것인지 (예전 기록처럼 source 가 비어 있으면 인정)"""
+        return self.source is None or not meta.source or meta.source == self.source
+
+    def get(self, name):
+        m = self.store.get(name)
+        return m if m and self.matches(m) else None
+
+    def raw(self, name):
+        """source 와 상관없이 기록 그대로 (덮어쓰기 확인용)"""
+        return self.store.get(name)
+
+    def update(self, meta) -> None:
+        meta.source = self.source if self.source is not None else self._source_of(meta.filename)
+        self.store.update(meta)
+
+    def completed(self, valid_names=None):
+        return [m for m in self.store.completed(valid_names) if self.matches(m)]
 
 
 class Workspace:
@@ -37,16 +143,26 @@ class Workspace:
     def __init__(self, image_folder: str, role: str):
         """원본 폴더·저장 루트·상태별 폴더 경로 준비, 두 역할의 CSV 읽기 (폴더는 저장할 때 생성)"""
         self.src = os.path.normpath(os.path.abspath(image_folder))   # 이미지를 읽는 폴더
-        self.root = os.path.normpath(os.path.abspath(C.OUTPUT_ROOT))  # 작업자/·검수자/ 가 놓일 위치
+        self.root = output_root(image_folder)                         # 작업자/·검수자/ 가 놓일 위치
+        self.dataset = dataset_key(image_folder, self.root)            # 이미지 폴더 구분 (CSV 의 source)
         self.role = role
-        self.worker_dir = os.path.join(self.root, C.WORKER_DIR)
-        self.reviewer_dir = os.path.join(self.root, C.REVIEWER_DIR)
+        sub = tuple(self.dataset.split(os.sep)) if (C.OUTPUT_PER_DATASET and self.dataset) else ()
+        self.worker_dir = os.path.join(self.root, C.WORKER_DIR, *sub)       # 작업자/<데이터셋>/
+        self.reviewer_dir = os.path.join(self.root, C.REVIEWER_DIR, *sub)   # 검수자/<데이터셋>/
         self.status_dirs = {st: os.path.join(self.reviewer_dir, d) for st, d in C.STATUS_DIRS.items()}
         self.pass_dir = self.status_dirs["PASS"]
         self.review_dir = self.status_dirs["REVIEW"]
         # CSV는 있으면 읽기만 함. 폴더는 실제 저장할 때 생성
-        self.worker_store = StatusStore(self.worker_dir)
-        self.reviewer_store = StatusStore(self.reviewer_dir)
+        # SourceView: 지금 연 이미지 폴더의 기록만 보이게 → 다른 폴더의 같은 이름 결과와 섞이지 않음
+        worker_raw, reviewer_raw = StatusStore(self.worker_dir), StatusStore(self.reviewer_dir)
+        def source_of(name):
+            for store in (reviewer_raw, worker_raw):
+                m = store.get(name)
+                if m and m.source:
+                    return m.source
+            return ""
+        self.worker_store = SourceView(worker_raw, self.dataset, source_of)
+        self.reviewer_store = SourceView(reviewer_raw, self.dataset, source_of)
 
     @property
     def is_reviewer(self) -> bool:
@@ -54,14 +170,14 @@ class Workspace:
         return self.role == C.ROLE_REVIEWER
 
     @property
-    def own_store(self) -> StatusStore:
+    def own_store(self) -> "SourceView":
         """내 역할의 CSV (작업자/ 또는 검수자/)"""
         return self.reviewer_store if self.is_reviewer else self.worker_store
 
     @property
     def own_dir_label(self) -> str:
-        """내 역할 폴더 이름 (화면 표시용)"""
-        return C.REVIEWER_DIR if self.is_reviewer else C.WORKER_DIR
+        """내 역할 저장 폴더 (저장 루트 기준 상대 경로, 화면 표시용) 예) 작업자/임시데이터"""
+        return self.rel(self.reviewer_dir if self.is_reviewer else self.worker_dir)
 
     @staticmethod
     def _txt(name: str) -> str:
@@ -78,19 +194,56 @@ class Workspace:
         return self.reviewer_dirs() if self.is_reviewer else [self.worker_dir]
 
     # ------------------------------------------------------------ 불러오기
+    def _belongs(self, view: "SourceView", name: str) -> bool:
+        """결과 폴더의 TXT 가 지금 연 이미지 폴더의 것인지 (CSV 기록이 없는 예전 TXT 는 인정)"""
+        raw = view.raw(name)
+        return raw is None or view.matches(raw)
+
     def resolve_label(self, name: str):
-        """(txt 경로 또는 None, 출처 설명)"""
+        """(txt 경로 또는 None, 출처 설명) — 다른 이미지 폴더의 결과는 건너뜀"""
         txt = self._txt(name)
         candidates = []
-        if self.is_reviewer:
+        if self.is_reviewer and self._belongs(self.reviewer_store, name):
             for d in self.reviewer_dirs():
                 candidates.append((os.path.join(d, txt), self.rel(d)))
-        candidates += [(os.path.join(self.worker_dir, txt), C.WORKER_DIR),
-                       (os.path.join(self.src, txt), "원본")]
+        if self._belongs(self.worker_store, name):
+            candidates.append((os.path.join(self.worker_dir, txt), self.rel(self.worker_dir)))
+        candidates.append((os.path.join(self.src, txt), "원본"))
         for path, label in candidates:
             if os.path.exists(path):
                 return path, label
         return None, "없음"
+
+    def overwrite_conflict(self, name: str):
+        """내 역할 폴더에 '다른 이미지 폴더'의 같은 이름 결과가 있으면 그 source, 없으면 None"""
+        raw = self.own_store.raw(name)
+        if raw and not self.own_store.matches(raw):
+            return raw.source
+        return None
+
+    # ------------------------------------------------------------ 작업자 이슈 노트 (메모장)
+    def issue_note_path(self, name: str) -> str:
+        """작업자/이슈노트/<이미지이름>.txt"""
+        return os.path.join(self.worker_dir, C.ISSUE_NOTE_DIR, os.path.splitext(name)[0] + ".txt")
+
+    def save_issue_note(self, meta) -> str | None:
+        """Issue/Note 내용을 메모장 파일로 저장. 내용이 비었으면 기존 파일 삭제. 저장 경로 반환"""
+        path = self.issue_note_path(meta.filename)
+        note = (meta.note or "").strip()
+        if not note:
+            if os.path.exists(path):
+                os.remove(path)
+            return None
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        text = ("[작업 이슈 노트]\n"
+                f"이미지      : {meta.filename}\n"
+                f"이미지 폴더 : {meta.source or self.src}\n"
+                f"작업자      : {meta.assignee}\n"
+                f"상태        : {meta.status}\n"
+                f"저장 시각   : {meta.updated_at}\n"
+                + "-" * 40 + "\n" + note + "\n")
+        atomic_write(path, lambda f: f.write(text), encoding="utf-8-sig")   # Windows 메모장 한글 호환
+        return path
 
     def own_meta(self, name: str):
         """내 역할 CSV의 이 이미지 기록"""
