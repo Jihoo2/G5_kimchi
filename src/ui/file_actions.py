@@ -1,0 +1,233 @@
+"""[카테고리] 폴더 열기 · 이미지 로드 · 저장 · 미저장 경고
+
+의사 코드
+    open_folder():
+        미저장 확인 → 폴더 선택 → 이미지 목록 → Workspace(역할별 저장 폴더 규칙) 생성
+        내 역할 CSV에 기록이 없는 첫 이미지부터 열기
+    load_index(idx):
+        이미지 열기 (EXIF 회전 반영 → YOLO 좌표와 일치)
+        라벨 TXT 찾기:  작업자 = 작업자/ → 원본
+                        검수자 = 검수자/(pass·edited·review·reviewed) → 작업자/ → 원본
+        검수 상태 / Scene / Note / 작업자·검수자 이름 표시
+        Undo·선택·미저장 초기화 → Cross Review 안내 → 화면 갱신
+    save():
+        검수자: 상태 미선택 또는 검수 규칙 위반이면 안내 후 중단
+        미확정 BBox 자동 확정
+        작업자는 상태를 항상 EDITED, Scene 미선택이면 박스 유무로 자동 지정
+        Workspace.save_label → 역할·상태별 폴더에 TXT 저장 (작업자는 이미지 복사본도)
+        label_status.csv 기록 → 썸네일·목록 갱신
+    maybe_save():   (이미지 이동·폴더 열기·종료·로그아웃 전에 호출)
+        변경 없음 또는 미저장 경고 OFF → 그냥 진행
+        아니면 [예: 저장 후 진행 / 아니오: 버리고 진행 / 취소: 머무름]
+"""
+import os
+
+from PIL import Image, ImageOps
+from tkinter import filedialog, messagebox
+
+from src import config as C
+from src.review.status_store import ImageMeta
+from src.review.workspace import Workspace
+from src.yolo.yolo_loader import list_images, load_yolo
+
+
+class LoadSaveMixin:
+    """폴더 열기 · 이미지 로드 · 저장 기능 (LabelingApp에 섞여 들어감 — self는 LabelingApp)"""
+
+    def open_folder(self):
+        """이미지 폴더 선택 → 이미지 목록·Workspace(저장 폴더 규칙) 준비 → 미완료 첫 이미지부터 열기"""
+        if not self.maybe_save():
+            return
+        folder = filedialog.askdirectory(title="작업할 이미지 폴더 선택", parent=self.root,
+                                         initialdir=self.folder or os.path.expanduser("~"))
+        if not folder:
+            return
+        names = list_images(folder)
+        if not names:
+            messagebox.showwarning("이미지 없음",
+                                   f"폴더에 이미지({', '.join(C.IMAGE_EXTS)})가 없습니다.",
+                                   parent=self.root)
+            return
+        try:
+            ws = Workspace(folder, self.role)
+        except Exception as ex:
+            messagebox.showerror("CSV 오류", f"{C.STATUS_CSV_NAME} 을(를) 읽지 못했습니다.\n{ex}",
+                                 parent=self.root)
+            return
+
+        self.folder, self.image_names, self.ws = folder, names, ws
+        self.filter_mode = None
+        self._apply_filter_list()
+        self.thumbs.clear_cache()
+        own = ws.own_store
+        start = next((i for i, n in enumerate(names)
+                      if not (own.get(n) and own.get(n).status)), 0)
+        self.cur = -1
+        self.load_index(start)
+        root_name = os.path.basename(ws.root)
+        self.set_message(f"{len(names)}장 로드 · 저장 위치: {root_name}/{ws.own_dir_label}/ · "
+                         f"미완료 첫 이미지({start + 1}번)부터 시작합니다.")
+
+    def load_index(self, idx: int):
+        """idx번째 이미지 열기
+        이미지 로드(EXIF 회전 반영) → 라벨 TXT 로드(역할별 우선순위) → 검수 정보 표시 → 화면 갱신
+        """
+        if not self.image_names:
+            return
+        idx = max(0, min(idx, len(self.image_names) - 1))
+        self.cur = idx
+        name = self.image_names[idx]
+        path = os.path.join(self.folder, name)
+
+        try:
+            with Image.open(path) as im:
+                # EXIF 회전을 반영해야 YOLO 좌표가 학습 시 이미지와 일치함
+                self.image = ImageOps.exif_transpose(im).convert("RGB")
+        except Exception as ex:
+            self.image, self.img_w, self.img_h, self.boxes = None, 0, 0, []
+            self.set_message(f"이미지를 열 수 없습니다: {name} ({ex})", "error")
+        else:
+            self.img_w, self.img_h = self.image.size
+            txt, src = self.ws.resolve_label(name)
+            self.boxes, errors = load_yolo(txt, self.img_w, self.img_h) if txt else ([], [])
+            if errors:
+                more = f" 외 {len(errors) - 1}건" if len(errors) > 1 else ""
+                self.set_message(f"TXT 일부를 읽지 못했습니다: {errors[0]}{more} → Validation으로 확인",
+                                 "error")
+            else:
+                self.set_message(f"{name} · BBox {len(self.boxes)}개 불러옴 (출처: {src})")
+
+        own = self.ws.own_meta(name)
+        # 검수자가 처음 여는 이미지: Scene/Note는 작업자 기록을 이어받고, 검수 상태는 비워둠
+        base = own or self.ws.effective_meta(name)
+        self._loading = True
+        try:
+            self.status_var.set(own.status if own else "")
+            self.scene_var.set(base.scene_type if base else "")
+            self.note.delete("1.0", "end")
+            if base and base.note:
+                self.note.insert("1.0", base.note)
+            self.note.edit_modified(False)
+            self._fill_user_fields(name)
+        finally:
+            self._loading = False
+
+        self.selected = None
+        self.undo.clear()
+        self.boxes_changed = False
+        self._loaded_note = self.note.get("1.0", "end-1c").strip()
+        self._set_dirty(False)
+        self._show_cross_review_info(name)
+        self.view.set_image(self.image)
+        self.refresh_all()
+
+    def _fill_user_fields(self, name):
+        """로그인한 역할 칸에는 내 이름, 다른 칸에는 상대 역할 폴더의 기록 표시"""
+        if name is None or self.ws is None:
+            worker_meta = reviewer_meta = None
+        else:
+            worker_meta = self.ws.worker_store.get(name)
+            reviewer_meta = self.ws.reviewer_store.get(name)
+        if self.role == C.ROLE_REVIEWER:
+            self.assignee_var.set(worker_meta.assignee if worker_meta else "")
+            self.reviewer_var.set(self.user_name)
+        else:
+            self.assignee_var.set(self.user_name)
+            self.reviewer_var.set(reviewer_meta.reviewer if reviewer_meta else "")
+
+    def save(self) -> bool:
+        """현재 이미지 저장
+        검수 규칙 확인 → 미확정 BBox 자동 확정 → 상태/Scene 기본값 → 역할별 폴더에 TXT(+이미지 복사)
+        → label_status.csv 기록 → 화면 갱신
+        """
+        if self.cur < 0 or self.image is None:
+            self.set_message("저장할 이미지가 없습니다.", "error")
+            return False
+        name = self.image_names[self.cur]
+
+        # 검수자는 검수 상태를 반드시 선택해야 저장 (PASS/REVIEW는 검수자만)
+        if self.role == C.ROLE_REVIEWER and not self.status_var.get():
+            messagebox.showwarning("검수 상태 선택",
+                                   "검수 상태를 선택한 뒤 저장하세요.\n\n"
+                                   "정상 → PASS\n오류 수정 → EDITED (수정 이유 기록)\n"
+                                   "애매함 → REVIEW (추측하지 않음)\n"
+                                   "Cross Review 정상 → REVIEWED",
+                                   parent=self.root)
+            return False
+
+        if self.role == C.ROLE_REVIEWER:
+            problem = self._check_review_rules(name)
+            if problem:
+                messagebox.showwarning("검수 규칙", problem, parent=self.root)
+                self.set_message(problem.split("\n")[0], "error")
+                return False
+
+        auto_confirmed = self.pending_index() is not None
+        if auto_confirmed:
+            for b in self.boxes:
+                b.pending = False
+            self.selected = None
+
+        self._loading = True    # 기본값 채울 때 dirty 트리거 방지
+        if self.role != C.ROLE_REVIEWER:
+            self.status_var.set("EDITED")      # 작업자 결과는 항상 EDITED
+        if not self.scene_var.get():
+            self.scene_var.set("kimchi_with_target" if self.boxes else "normal_kimchi")
+        self._loading = False
+
+        meta = ImageMeta(filename=name, status=self.status_var.get(),
+                         assignee=self.assignee_var.get(), reviewer=self.reviewer_var.get(),
+                         scene_type=self.scene_var.get(),
+                         note=self.note.get("1.0", "end-1c").strip(),
+                         num_boxes=len(self.boxes))
+        try:
+            saved = self.ws.save_label(name, self.boxes, self.img_w, self.img_h, meta.status)
+            self.ws.own_store.update(meta)
+        except OSError as ex:
+            messagebox.showerror("저장 실패", f"{name}\n{ex}", parent=self.root)
+            return False
+
+        for b in self.boxes:
+            b.state = ""
+        self.boxes_changed = False
+        self._loaded_note = meta.note
+        self._set_dirty(False)
+        self._show_cross_review_info(name)
+        self.thumbs.invalidate(self.cur)
+        if self.filter_mode:
+            self._apply_filter_list()
+        self.refresh_all()
+        extra = " (미확정 BBox 자동 확정)" if auto_confirmed else ""
+        self.set_message(f"저장 완료: {self.ws.rel(saved)} · BBox {len(self.boxes)}개 · "
+                         f"{meta.status}{extra}", "success")
+        return True
+
+    def save_and_next(self):
+        """저장에 성공하면 다음 이미지로 이동 (Ctrl+Enter)"""
+        if self.save():
+            self.go_next()
+
+    def maybe_save(self) -> bool:
+        """이동 전 호출. True면 진행, False면 머무름"""
+        if not self.dirty or not self.warn_unsaved.get():
+            return True
+        ans = messagebox.askyesnocancel(
+            "미저장 경고",
+            f"'{self.image_names[self.cur]}' 의 변경사항이 저장되지 않았습니다.\n\n"
+            "예: 저장 후 이동\n아니오: 저장하지 않고 이동\n취소: 머무르기",
+            parent=self.root)
+        if ans is None:
+            return False
+        return self.save() if ans else True
+
+    def on_close(self):
+        """창 닫기(X): 미저장 확인 후 프로그램 종료"""
+        if self.maybe_save():
+            self.root.destroy()
+
+    def _on_warn_toggle(self):
+        """미저장 경고 ON/OFF 스위치 표시 갱신"""
+        on = self.warn_unsaved.get()
+        self.warn_lbl.configure(text=f"미저장 경고 : {'ON' if on else 'OFF'}")
+        if not on:
+            self.set_message("미저장 경고 OFF: 저장하지 않고 이동하면 변경사항이 사라집니다.", "error")
