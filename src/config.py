@@ -131,6 +131,7 @@ ZOOM_MIN = float(_view.get("zoom_min", 0.05))
 ZOOM_MAX = float(_view.get("zoom_max", 30.0))
 MIN_BOX_PX = float(_view.get("min_box_px", 3))
 UNDO_LIMIT = int(_view.get("undo_limit", 100))
+RESIZE_STEP = float(_view.get("resize_step", 0.0005))   # Ctrl/Alt + 방향키 크기 조절 단위 (정규화)
 
 # ================================================================ 화면 색상
 COLOR_BG = "#EEF1F6"
