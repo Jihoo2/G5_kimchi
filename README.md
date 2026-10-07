@@ -41,7 +41,7 @@ kimchi_labeler/                  ← 최상위 (main.py 위치)
   │    ├─ 이슈노트/                작업자 Issue/Note 메모 (<이미지이름>.txt)
   │    └─ review/                  작업자 REVIEW: 이미지 복사본 + TXT + <이미지이름>_리뷰노트.txt
   └─ 검수자/                       label_status.csv
-       ├─ pass/  edited/  review/  reviewed/      TXT
+       ├─ pass/  edited/  review/  reviewed/      이미지 복사본 + TXT
 ```
 - 어느 이미지 폴더의 결과인지 `label_status.csv` 의 `source` 칸에 기록 → 다른 폴더에 같은 이름의 이미지가 있어도 결과가 섞이지 않음
 - 같은 이름의 다른 폴더 결과를 덮어쓰게 되면 저장 전에 확인 창이 뜸

@@ -50,7 +50,7 @@ REVIEW_NOTE_SUFFIX = _settings.get("review_note_suffix", "_리뷰노트")
 # ================================================================ 저장 위치 (원본 폴더는 수정하지 않음)
 #   <저장 루트>/작업자/            작업자: 이미지 복사본 + TXT + label_status.csv
 #   <저장 루트>/검수자/            label_status.csv
-#   <저장 루트>/검수자/<상태>/     pass / edited / review / reviewed  (TXT)
+#   <저장 루트>/검수자/<상태>/     pass / edited / review / reviewed  (이미지 복사본 + TXT)
 # 저장 루트 = OUTPUT_BASE 기준 폴더 + OUTPUT_PATH (상대 경로) → 실제 계산은 src/review/workspace.py
 _output = _settings.get("output", {})
 if "output_root" in _settings and not _output:          # 예전 설정 파일 호환 (main.py 폴더 기준)
@@ -70,8 +70,8 @@ PASS_DIR, EDITED_DIR = STATUS_DIRS["PASS"], STATUS_DIRS["EDITED"]
 REVIEW_DIR, REVIEWED_DIR = STATUS_DIRS["REVIEW"], STATUS_DIRS["REVIEWED"]
 
 COPY_IMAGE_WORKER = bool(_copy.get("worker", True))
-COPY_IMAGE_REVIEWER = bool(_copy.get("reviewer", False))
-REVIEWER_NO_IMAGE_STATUSES = tuple(_copy.get("reviewer_no_image_statuses", ["PASS", "REVIEWED"]))
+COPY_IMAGE_REVIEWER = bool(_copy.get("reviewer", True))                       # 검수자 결과 폴더에 이미지 복사
+REVIEWER_NO_IMAGE_STATUSES = tuple(_copy.get("reviewer_no_image_statuses", []))  # 이 상태는 TXT만
 
 # ================================================================ 클래스 (configs/classes.yaml)
 CLASSES = [(int(c["id"]), str(c["name"]), str(c["color"]), bool(c.get("enabled", True)))
@@ -88,13 +88,13 @@ NUM_CLASSES = len(CLASSES)
 # ================================================================ 검수 상태 (코드 규칙과 묶여 있어 여기서 관리)
 STATUSES = ["PASS", "EDITED", "REVIEW", "REVIEWED"]
 STATUS_DESC = {     # 검수 상태 라디오 버튼 툴팁
-    "PASS": "[2단계] 기존 BBox·Class 확인, 누락 없음 → 검수자/pass (TXT만)\n"
+    "PASS": "[2단계] 기존 BBox·Class 확인, 누락 없음 → 검수자/pass\n"
             "수정했거나 Class 4가 있으면 선택 불가",
     "EDITED": "[2단계] 오류 발견 → BBox/Class 수정 → 검수자/edited\n"
               "수정 이유를 Issue/Note에 기록 필수 → Cross Review 대상",
     "REVIEW": "작업자: 판단이 어렵거나 이슈가 있음 → Issue/Note에 기록 후 검수자에게 확인 요청\n"
               "검수자: 애매함 → 추측하지 않음 → 검수자/review, 애매한 점 기록 필수",
-    "REVIEWED": "[3단계] Cross Review 결과 정상 → 검수자/reviewed (TXT만)\n"
+    "REVIEWED": "[3단계] Cross Review 결과 정상 → 검수자/reviewed\n"
                 "Cross Review 대상만, 직전 처리자와 다른 검수자만 가능",
 }
 REVIEWER_ONLY_STATUSES = ("PASS", "REVIEWED")   # 작업자는 선택 불가 (작업자는 EDITED / REVIEW)

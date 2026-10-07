@@ -42,8 +42,8 @@ review_note_suffix: _리뷰노트    # 리뷰 노트 파일 이름 = <이미지�
 # ---------------------------------------------------------------- 이미지 복사 (원본은 항상 그대로)
 copy_image:
   worker: true                         # 작업자/ 에 원본 이미지 복사본 저장
-  reviewer: false                      # true 로 바꾸면 검수자 edited/ · review/ 에도 복사
-  reviewer_no_image_statuses: [PASS, REVIEWED]   # reviewer 가 true 여도 이 상태는 TXT만
+  reviewer: true                       # 검수자 pass/ · edited/ · review/ · reviewed/ 에 이미지 복사본 저장
+  reviewer_no_image_statuses: []       # 이미지 없이 TXT만 저장할 상태 (예: [PASS, REVIEWED])
 
 # ---------------------------------------------------------------- 이미지 파일
 image_exts: [.jpg, .jpeg, .png, .bmp]
