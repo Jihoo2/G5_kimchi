@@ -7,7 +7,7 @@
     confirm_pending():  Enter    미확정 해제
     cancel_pending():   Esc      미확정 박스 삭제
     nudge_selected(dx, dy):      방향키로 선택 박스 이동 (이미지 밖으로 못 나감)
-    resize_selected(방향, grow): Ctrl+방향키 그 방향으로 늘림 / Alt+방향키 그 방향 변을 안쪽으로 (0.0005씩)
+    resize_selected(방향, grow): Ctrl+방향키 그 방향으로 늘림 / Alt+방향키 반대쪽 변을 화살표 방향으로 (0.0005씩)
     delete_selected():  Delete   선택 박스 삭제
     undo_action():      Ctrl+Z   Undo 스택에서 이전 박스 목록 복원
     redo_action():      Ctrl+Shift+Z / Ctrl+Y   Undo 했던 변경 다시 실행 (새로 수정하면 Redo 기록은 사라짐)
@@ -78,8 +78,9 @@ class BoxEditMixin:
 
     def resize_selected(self, direction: str, grow: bool = True):
         """선택 박스의 direction 쪽 변을 RESIZE_STEP(기본 0.0005, 정규화) 만큼 바깥/안쪽으로
-            Ctrl + 방향키 → grow=True  : 그 방향으로 늘어남   (예: Ctrl+→ 오른쪽 변이 오른쪽으로)
-            Alt  + 방향키 → grow=False : 그 방향 변이 안쪽으로 (예: Alt+→ 오른쪽 변이 왼쪽으로)
+            Ctrl + 방향키 → grow=True  : 그 방향 변이 바깥으로 (예: Ctrl+→ 오른쪽 변이 오른쪽으로)
+            Alt  + 방향키 → 단축키에서 반대쪽 변으로 바꿔 grow=False 로 호출
+                            (예: Alt+→ → direction="Left" → 왼쪽 변이 오른쪽으로, 왼쪽에서 줄어듦)
         이미지 밖으로는 못 늘어나고, 최소 크기보다 작아지면 줄이지 않음"""
         if self.selected is None or self.image is None:
             self.set_message("크기를 바꿀 BBox를 먼저 선택하세요.", "error")
@@ -107,7 +108,8 @@ class BoxEditMixin:
         b.x1, b.y1, b.x2, b.y2 = x1, y1, x2, y2
         self.box_changed(self.selected)
         _, _, _, w, h = b.to_yolo(W, H)
-        self.set_message(f"BBox {'늘림' if grow else '줄임'} ({direction}) · W {w:.4f}  H {h:.4f}")
+        side = {"Left": "왼쪽", "Right": "오른쪽", "Up": "위쪽", "Down": "아래쪽"}[direction]
+        self.set_message(f"BBox {side}에서 {'늘림' if grow else '줄임'} · W {w:.4f}  H {h:.4f}")
 
     def nudge_selected(self, dx, dy):
         """방향키 이동 (원본 이미지 픽셀 단위)"""
