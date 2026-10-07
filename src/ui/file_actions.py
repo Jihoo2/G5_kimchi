@@ -58,7 +58,7 @@ class LoadSaveMixin:
         self.folder, self.image_names, self.ws = folder, names, ws
         self._carry = None                         # 검수자 '이전 선택 유지' 초기화 (폴더가 바뀌면 이어받지 않음)
         # 작업자: 이미 저장한 이미지는 목록에서 빼고 '미완료만' 보여줌 (완료 이미지는 라벨 완료 목록에서 열기)
-        self.filter_mode = "TODO" if self.role != C.ROLE_REVIEWER else None
+        self.filter_mode = "TODO" if self.role == C.ROLE_WORKER else None
         self._apply_filter_list()                 # 미완료가 하나도 없으면 자동으로 전체 보기
         self.thumbs.clear_cache()
         own = ws.own_store
@@ -139,7 +139,7 @@ class LoadSaveMixin:
             # 검수자 편의: 직전에 PASS / REVIEW 로 저장했고, 이 이미지에 아직 검수 기록이 없으면
             #   → 같은 검수 상태와 이슈 노트를 미리 채움 (이미 기록이 있으면 그 기록을 그대로 보여줌)
             carry = getattr(self, "_carry", None)
-            self._carried = bool(self.role == C.ROLE_REVIEWER and own is None and carry)
+            self._carried = bool(self.role in C.REVIEW_ROLES and own is None and carry)
             if self._carried:
                 self.status_var.set(carry["status"])
                 self.note.delete("1.0", "end")
@@ -165,18 +165,20 @@ class LoadSaveMixin:
     def _fill_user_fields(self, name):
         """로그인한 역할 칸에는 내 이름, 다른 칸에는 상대 역할 폴더의 기록 표시"""
         if name is None or self.ws is None:
-            worker_meta = reviewer_meta = None
+            worker_meta = reviewer_meta = reviewer2_meta = None
         else:
             # 원본 폴더면 다른 폴더의 이름 기록을 표시하지 않음 (저장 결과 보기 중이면 표시)
             shown = self.ws.is_result_folder or bool(getattr(self, "viewing_result", None))
             worker_meta = self.ws.worker_store.get(name) if shown else None
             reviewer_meta = self.ws.reviewer_store.get(name) if shown else None
-        if self.role == C.ROLE_REVIEWER:
-            self.assignee_var.set(worker_meta.assignee if worker_meta else "")
-            self.reviewer_var.set(self.user_name)
-        else:
-            self.assignee_var.set(self.user_name)
-            self.reviewer_var.set(reviewer_meta.reviewer if reviewer_meta else "")
+            reviewer2_meta = self.ws.reviewer2_store.get(name) if shown else None
+        # 내 역할 칸은 내 이름, 나머지 칸은 각 단계 기록에 남은 이름
+        self.assignee_var.set(self.user_name if self.role == C.ROLE_WORKER
+                              else (worker_meta.assignee if worker_meta else ""))
+        self.reviewer_var.set(self.user_name if self.role == C.ROLE_REVIEWER
+                              else (reviewer_meta.reviewer if reviewer_meta else ""))
+        self.reviewer2_var.set(self.user_name if self.role == C.ROLE_REVIEWER2
+                               else (reviewer2_meta.reviewer2 if reviewer2_meta else ""))
 
     def save(self) -> bool:
         """현재 이미지 저장
@@ -189,17 +191,16 @@ class LoadSaveMixin:
         name = self.image_names[self.cur]
 
         # 검수자는 검수 상태를 반드시 선택해야 저장 (PASS/REVIEW는 검수자만)
-        if self.role == C.ROLE_REVIEWER and not self.status_var.get():
+        if self.role in C.REVIEW_ROLES and not self.status_var.get():
+            allowed = " / ".join(C.ROLE_STATUSES.get(self.role, ()))
             messagebox.showwarning("검수 상태 선택",
-                                   "검수 상태를 선택한 뒤 저장하세요.\n\n"
-                                   "정상 → PASS\n오류 수정 → EDITED (수정 이유 기록)\n"
-                                   "애매함 → REVIEW (추측하지 않음)\n"
-                                   "Cross Review 정상 → REVIEWED",
+                                   f"검수 상태를 선택한 뒤 저장하세요.\n\n"
+                                   f"{C.ROLE_LABELS[self.role]}이(가) 선택할 수 있는 상태: {allowed}",
                                    parent=self.root)
             return False
 
         # 작업자 REVIEW: 이슈 내용 기록 필수 (검수자가 보고 판단할 수 있도록)
-        if (self.role != C.ROLE_REVIEWER and self.status_var.get() == "REVIEW"
+        if (self.role == C.ROLE_WORKER and self.status_var.get() == "REVIEW"
                 and not self.note.get("1.0", "end-1c").strip()):
             msg = ("REVIEW는 검수자에게 확인을 요청하는 상태입니다.\n"
                    "→ Issue/Note에 어떤 점이 애매하거나 문제인지 적어주세요.\n"
@@ -208,7 +209,7 @@ class LoadSaveMixin:
             self.set_message(msg.split("\n")[0], "error")
             return False
 
-        if self.role == C.ROLE_REVIEWER:
+        if self.role in C.REVIEW_ROLES:
             problem = self._check_review_rules(name)
             if problem:
                 messagebox.showwarning("검수 규칙", problem, parent=self.root)
@@ -247,7 +248,7 @@ class LoadSaveMixin:
             self.selected = None
 
         self._loading = True    # 기본값 채울 때 dirty 트리거 방지
-        if self.role != C.ROLE_REVIEWER and self.status_var.get() not in C.WORKER_STATUSES:
+        if self.role == C.ROLE_WORKER and self.status_var.get() not in C.WORKER_STATUSES:
             self.status_var.set("EDITED")      # 작업자: REVIEW를 고르지 않았으면 EDITED
         if not self.scene_var.get():
             self.scene_var.set("kimchi_with_target" if self.boxes else "normal_kimchi")
@@ -255,13 +256,14 @@ class LoadSaveMixin:
 
         meta = ImageMeta(filename=name, status=self.status_var.get(),
                          assignee=self.assignee_var.get(), reviewer=self.reviewer_var.get(),
+                         reviewer2=self.reviewer2_var.get(),
                          scene_type=self.scene_var.get(),
                          note=self.note.get("1.0", "end-1c").strip(),
                          num_boxes=len(self.boxes))
         try:
             saved = self.ws.save_label(name, self.boxes, self.img_w, self.img_h, meta.status)
             self.ws.own_store.update(meta)
-            note_path = self.ws.save_issue_note(meta) if self.role != C.ROLE_REVIEWER else None
+            note_path = self.ws.save_issue_note(meta) if self.role == C.ROLE_WORKER else None
         except OSError as ex:
             messagebox.showerror("저장 실패", f"{name}\n{ex}", parent=self.root)
             return False
@@ -273,9 +275,9 @@ class LoadSaveMixin:
         self._last_scene = meta.scene_type             # 다음 이미지에서도 같은 Scene Type 유지
         if getattr(self, "viewing_result", None):     # 상태가 바뀌면 결과 폴더도 바뀜 (예: pass → review)
             self.viewing_result = self.ws.rel(self.ws.target_dir(meta.status))
-        if self.role == C.ROLE_REVIEWER:            # 다음 이미지에 이어받을 검수 상태·노트
+        if self.role in C.REVIEW_ROLES:             # 다음 이미지에 이어받을 검수 상태·노트
             self._carry = ({"status": meta.status, "note": meta.note}
-                           if meta.status in ("PASS", "REVIEW") else None)
+                           if meta.status in ("PASS", "REVIEW", "REVIEWED") else None)
         self._set_dirty(False)
         self._show_cross_review_info(name)
         self.thumbs.invalidate(self.cur)
