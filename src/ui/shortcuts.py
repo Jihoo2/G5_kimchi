@@ -9,6 +9,8 @@
         숫자 0~6      → Class 지정 (선택 BBox가 있으면 Class 변경)
         Enter         → 미확정 BBox 확정
         방향키         → 선택 BBox 1px 이동 (Shift 10px) / 선택 없으면 ←→ 이미지 이동
+        Ctrl + 방향키  → 선택 BBox 를 그 방향으로 늘림 / Alt + 방향키 → 그 방향 변을 안쪽으로 줄임
+        Tab / Shift+Tab → 라벨 목록 순서로 다음 / 이전 BBox 선택 (마지막 다음은 처음)
         A / D         → 이전 / 다음 이미지
         W / E / H     → 그리기 / 선택·이동 / Pan 모드
         F, + / -      → Fit, 확대 / 축소
@@ -31,6 +33,9 @@ SHORTCUTS = [
     ("Ctrl+O", "폴더 열기"), ("Ctrl+S", "저장"), ("Ctrl+Enter", "저장 후 다음"),
     ("Enter", "그린 BBox 확정"), ("Esc", "미확정 BBox 취소 / 선택 해제"),
     ("방향키", "선택한 BBox 1px 이동 (Shift: 10px)"),
+    ("Tab / Shift + Tab", "라벨 목록 순서로 다음 / 이전 BBox 선택 (끝에서 처음으로)"),
+    ("Ctrl + 방향키", "선택한 BBox 를 그 방향으로 늘림 (0.0005씩)"),
+    ("Alt + 방향키", "선택한 BBox 의 그 방향 변을 안쪽으로 줄임 (0.0005씩)"),
     ("A / D", "이전 / 다음 이미지 (선택 없을 땐 ← / →도 가능)"),
     ("W", "새 BBox 그리기 모드"), ("E", "선택·이동 모드"),
     ("H", "Pan 모드 (휠 클릭·우클릭 드래그는 항상 Pan)"),
@@ -59,9 +64,35 @@ class ShortcutMixin:
         # (Shift 를 누르면 대문자 Z 로 들어오므로 글자 대신 Shift 눌림 여부로 구분 → Caps Lock 켜져도 정상)
         for k in ("z", "Z"):
             bind(f"<Control-{k}>", lambda e: (self._on_ctrl_z(e), "break")[1])
+        # Tab = 다음 박스 선택, Shift+Tab = 이전 박스 선택 (원래 Tab 의 포커스 이동 대신)
+        bind("<Tab>", lambda e: self._on_tab(e, 1))
+        for seq in ("<Shift-Tab>", "<ISO_Left_Tab>"):     # Linux 는 Shift+Tab 이 ISO_Left_Tab 으로 들어옴
+            try:
+                bind(seq, lambda e: self._on_tab(e, -1))
+            except tk.TclError:                          # Windows 에는 ISO_Left_Tab 이 없음
+                pass
+        # Ctrl + 방향키 = 선택 박스를 그 방향으로 늘림, Alt + 방향키 = 그 방향 변을 안쪽으로 줄임
+        for k in ("Left", "Right", "Up", "Down"):
+            bind(f"<Control-{k}>", lambda e, k=k: self._on_resize_key(e, k, True))
+            bind(f"<Alt-{k}>", lambda e, k=k: self._on_resize_key(e, k, False))
         bind("<Control-Return>", lambda e: (self.save_and_next(), "break")[1])
         bind("<Control-KP_Enter>", lambda e: (self.save_and_next(), "break")[1])
         bind("<Key>", self._on_key)
+
+    def _on_tab(self, e, step):
+        """Tab / Shift+Tab → 라벨 목록 순서로 박스 선택 (글자 입력칸에서는 원래 Tab 동작 유지)"""
+        if isinstance(e.widget, TEXT_INPUTS):
+            return None
+        self.select_next_box(step)
+        self.view.canvas.focus_set()
+        return "break"
+
+    def _on_resize_key(self, e, direction, grow):
+        """Ctrl/Alt + 방향키 → 선택 박스 크기 조절 (글자 입력칸에서는 원래 키 동작 유지)"""
+        if isinstance(e.widget, TEXT_INPUTS):
+            return None
+        self.resize_selected(direction, grow)
+        return "break"
 
     def _on_ctrl_z(self, e):
         """Ctrl+Z → Undo, Ctrl+Shift+Z → Redo"""
