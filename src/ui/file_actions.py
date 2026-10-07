@@ -71,9 +71,11 @@ class LoadSaveMixin:
         view = "미완료만 표시" if self.filter_mode == "TODO" else "전체 표시"
         self.set_message(f"{len(names)}장 중 미완료 {todo}장 ({view}) · 저장 위치: {root_name}/{ws.own_dir_label}/")
 
-    def load_index(self, idx: int):
+    def load_index(self, idx: int, from_result: bool = False):
         """idx번째 이미지 열기
-        이미지 로드(EXIF 회전 반영) → 라벨 TXT 로드(역할별 우선순위) → 검수 정보 표시 → 화면 갱신
+        이미지 로드(EXIF 회전 반영) → 라벨 TXT 로드 → 검수 정보 표시 → 화면 갱신
+        from_result=True (라벨 완료 목록에서 선택):
+            연 폴더 대신 '내가 저장한 결과'(예: 검수자/pass/ 의 이미지 + TXT)를 표시
         """
         if not self.image_names:
             return
@@ -81,6 +83,10 @@ class LoadSaveMixin:
         self.cur = idx
         name = self.image_names[idx]
         path = os.path.join(self.folder, name)
+        result = self.ws.saved_result(name) if from_result else None
+        self.viewing_result = result["rel"] if result else None      # 저장 결과 보기 중이면 그 폴더
+        if result and result["image"]:
+            path = result["image"]
 
         try:
             with Image.open(path) as im:
@@ -91,12 +97,18 @@ class LoadSaveMixin:
             self.set_message(f"이미지를 열 수 없습니다: {name} ({ex})", "error")
         else:
             self.img_w, self.img_h = self.image.size
-            txt, src = self.ws.resolve_label(name)
+            if result:
+                txt, src = result["txt"], f"저장 결과 {result['rel']}"
+            else:
+                txt, src = self.ws.resolve_label(name)
             self.boxes, errors = load_yolo(txt, self.img_w, self.img_h) if txt else ([], [])
             if errors:
                 more = f" 외 {len(errors) - 1}건" if len(errors) > 1 else ""
                 self.set_message(f"TXT 일부를 읽지 못했습니다: {errors[0]}{more} → Validation으로 확인",
                                  "error")
+            elif result:
+                self.set_message(f"{name} · 저장 결과 보기: {result['rel']}/ · BBox {len(self.boxes)}개 "
+                                 "(수정 후 저장하면 이 결과가 갱신됨 · 썸네일/이전·다음은 연 폴더 기준)")
             else:
                 done_at = self.ws.saved_elsewhere(name)
                 if done_at:
@@ -105,13 +117,19 @@ class LoadSaveMixin:
                 else:
                     self.set_message(f"{name} · BBox {len(self.boxes)}개 불러옴 (출처: {src})")
 
-        own = self.ws.display_own_meta(name)          # 원본 폴더면 None (저장 결과를 표시하지 않음)
+        own = result["meta"] if result else self.ws.display_own_meta(name)   # 원본 폴더면 None
         # 검수자가 처음 여는 이미지: Scene/Note는 작업자 기록을 이어받고, 검수 상태는 비워둠
         base = own or self.ws.display_meta(name)
         self._loading = True
         try:
             self.status_var.set(own.status if own else "")
-            self.scene_var.set(base.scene_type if base else "")
+            # Scene Type: 저장된 내 기록 > 이번에 마지막으로 고른 값 > (검수자) 작업자 기록 > 기본값(김치+대상)
+            if own and own.scene_type:
+                scene = own.scene_type
+            else:
+                scene = (getattr(self, "_last_scene", "") or (base.scene_type if base else "")
+                         or C.SCENE_TYPES[0][0])
+            self.scene_var.set(scene)
             self.note.delete("1.0", "end")
             if base and base.note:
                 self.note.insert("1.0", base.note)
@@ -149,7 +167,8 @@ class LoadSaveMixin:
         if name is None or self.ws is None:
             worker_meta = reviewer_meta = None
         else:
-            shown = self.ws.is_result_folder           # 원본 폴더면 다른 폴더의 이름 기록을 표시하지 않음
+            # 원본 폴더면 다른 폴더의 이름 기록을 표시하지 않음 (저장 결과 보기 중이면 표시)
+            shown = self.ws.is_result_folder or bool(getattr(self, "viewing_result", None))
             worker_meta = self.ws.worker_store.get(name) if shown else None
             reviewer_meta = self.ws.reviewer_store.get(name) if shown else None
         if self.role == C.ROLE_REVIEWER:
@@ -197,7 +216,8 @@ class LoadSaveMixin:
                 return False
 
         # 원본 폴더에서 이미 저장한 이미지를 다시 저장하면 이전 작업을 덮어씀 → 확인
-        done_at = self.ws.saved_elsewhere(name)
+        # (저장 결과 보기 중이면 그 결과를 고치는 것이므로 확인하지 않음)
+        done_at = None if getattr(self, "viewing_result", None) else self.ws.saved_elsewhere(name)
         if done_at and not messagebox.askyesno(
                 "이미 저장된 이미지",
                 f"'{name}' 은(는) 이미 {done_at}/ 에 저장되어 있습니다.\n"
@@ -250,6 +270,9 @@ class LoadSaveMixin:
             b.state = ""
         self.boxes_changed = False
         self._loaded_note = meta.note
+        self._last_scene = meta.scene_type             # 다음 이미지에서도 같은 Scene Type 유지
+        if getattr(self, "viewing_result", None):     # 상태가 바뀌면 결과 폴더도 바뀜 (예: pass → review)
+            self.viewing_result = self.ws.rel(self.ws.target_dir(meta.status))
         if self.role == C.ROLE_REVIEWER:            # 다음 이미지에 이어받을 검수 상태·노트
             self._carry = ({"status": meta.status, "note": meta.note}
                            if meta.status in ("PASS", "REVIEW") else None)
@@ -264,6 +287,12 @@ class LoadSaveMixin:
                          f"{meta.status}{extra}"
                          + (f" · 이슈노트: {self.ws.rel(note_path)}" if note_path else ""), "success")
         return True
+
+    def open_result(self, idx: int):
+        """라벨 완료 목록에서 선택: 연 폴더가 아니라 내가 저장한 결과(이미지 + TXT)를 표시"""
+        if not self.maybe_save():
+            return
+        self.load_index(idx, from_result=True)
 
     def save_and_next(self):
         """저장에 성공하면 다음 이미지로 이동 (Ctrl+Enter)"""
