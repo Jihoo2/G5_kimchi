@@ -56,6 +56,7 @@ class LoadSaveMixin:
             return
 
         self.folder, self.image_names, self.ws = folder, names, ws
+        self._carry = None                         # 검수자 '이전 선택 유지' 초기화 (폴더가 바뀌면 이어받지 않음)
         # 작업자: 이미 저장한 이미지는 목록에서 빼고 '미완료만' 보여줌 (완료 이미지는 라벨 완료 목록에서 열기)
         self.filter_mode = "TODO" if self.role != C.ROLE_REVIEWER else None
         self._apply_filter_list()                 # 미완료가 하나도 없으면 자동으로 전체 보기
@@ -116,6 +117,17 @@ class LoadSaveMixin:
                 self.note.insert("1.0", base.note)
             self.note.edit_modified(False)
             self._fill_user_fields(name)
+
+            # 검수자 편의: 직전에 PASS / REVIEW 로 저장했고, 이 이미지에 아직 검수 기록이 없으면
+            #   → 같은 검수 상태와 이슈 노트를 미리 채움 (이미 기록이 있으면 그 기록을 그대로 보여줌)
+            carry = getattr(self, "_carry", None)
+            self._carried = bool(self.role == C.ROLE_REVIEWER and own is None and carry)
+            if self._carried:
+                self.status_var.set(carry["status"])
+                self.note.delete("1.0", "end")
+                if carry["note"]:
+                    self.note.insert("1.0", carry["note"])
+                self.note.edit_modified(False)
         finally:
             self._loading = False
 
@@ -125,6 +137,10 @@ class LoadSaveMixin:
         self._loaded_note = self.note.get("1.0", "end-1c").strip()
         self._set_dirty(False)
         self._show_cross_review_info(name)
+        if getattr(self, "_carried", False):
+            extra = " + 이슈 노트" if self._loaded_note else ""
+            self.set_message(f"{name} · 이전 선택 유지: {self._carry['status']}{extra} "
+                             "(저장해야 반영 · 다른 상태를 고르면 변경)")
         self.view.set_image(self.image)
         self.refresh_all()
 
@@ -234,6 +250,9 @@ class LoadSaveMixin:
             b.state = ""
         self.boxes_changed = False
         self._loaded_note = meta.note
+        if self.role == C.ROLE_REVIEWER:            # 다음 이미지에 이어받을 검수 상태·노트
+            self._carry = ({"status": meta.status, "note": meta.note}
+                           if meta.status in ("PASS", "REVIEW") else None)
         self._set_dirty(False)
         self._show_cross_review_info(name)
         self.thumbs.invalidate(self.cur)
