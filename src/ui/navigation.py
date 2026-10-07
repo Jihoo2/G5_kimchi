@@ -44,8 +44,11 @@ class NavigationMixin:
         self.goto(target)
 
     def goto(self, idx: int):
-        """지정한 이미지로 이동 (미저장 변경이 있으면 먼저 확인)"""
-        if idx == self.cur or not self.image_names:
+        """지정한 이미지로 이동 (미저장 변경이 있으면 먼저 확인)
+        같은 이미지라도 '저장 결과 보기' 중이면 연 폴더의 모습으로 다시 열기 (썸네일 클릭으로 복귀)"""
+        if not self.image_names:
+            return
+        if idx == self.cur and not getattr(self, "viewing_result", None):
             return
         if not self.maybe_save():
             return
