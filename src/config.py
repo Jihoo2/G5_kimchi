@@ -64,6 +64,7 @@ if OUTPUT_BASE not in ("parent", "image_folder", "project"):
 
 WORKER_DIR = _folders.get("worker", "작업자")
 REVIEWER_DIR = _folders.get("reviewer", "검수자")
+REVIEWER2_DIR = _folders.get("reviewer2", "2차검수자")       # 2차 검수자 → 2차검수자/<상태>/
 STATUS_DIRS = {"PASS": "pass", "EDITED": "edited", "REVIEW": "review", "REVIEWED": "reviewed"}
 STATUS_DIRS.update(_folders.get("status", {}))
 PASS_DIR, EDITED_DIR = STATUS_DIRS["PASS"], STATUS_DIRS["EDITED"]
@@ -88,17 +89,23 @@ NUM_CLASSES = len(CLASSES)
 # ================================================================ 검수 상태 (코드 규칙과 묶여 있어 여기서 관리)
 STATUSES = ["PASS", "EDITED", "REVIEW", "REVIEWED"]
 STATUS_DESC = {     # 검수 상태 라디오 버튼 툴팁
-    "PASS": "[2단계] 기존 BBox·Class 확인, 누락 없음 → 검수자/pass\n"
+    "PASS": "[검수자 · 2차 검수자] 기존 BBox·Class 확인, 누락 없음\n"
             "수정했거나 Class 4가 있으면 선택 불가",
-    "EDITED": "[2단계] 오류 발견 → BBox/Class 수정 → 검수자/edited\n"
-              "수정 이유를 Issue/Note에 기록 필수 → Cross Review 대상",
-    "REVIEW": "작업자: 판단이 어렵거나 이슈가 있음 → Issue/Note에 기록 후 검수자에게 확인 요청\n"
-              "검수자: 애매함 → 추측하지 않음 → 검수자/review, 애매한 점 기록 필수",
-    "REVIEWED": "[3단계] Cross Review 결과 정상 → 검수자/reviewed\n"
-                "Cross Review 대상만, 직전 처리자와 다른 검수자만 가능",
+    "EDITED": "[작업자 · 검수자 · 2차 검수자] BBox/Class 를 수정·추가·삭제함\n"
+              "(박스를 고치면 자동 지정, 이슈 노트 없이 저장 가능)",
+    "REVIEW": "[작업자 · 검수자] 애매함 → 추측하지 않음, 애매한 점을 Issue/Note 에 기록\n"
+              "(2차 검수자는 선택 불가)",
+    "REVIEWED": "[2차 검수자 전용] 1차 검수 결과가 정상임을 확인\n"
+                "1차 검수 기록이 있는 이미지만, 1차 검수자와 다른 사람만 가능",
 }
-REVIEWER_ONLY_STATUSES = ("PASS", "REVIEWED")   # 작업자는 선택 불가 (작업자는 EDITED / REVIEW)
-WORKER_STATUSES = ("EDITED", "REVIEW")           # 작업자가 저장할 수 있는 상태
+# 역할별로 선택할 수 있는 검수 상태 (나머지는 화면에서 비활성화, 저장 시에도 막음)
+ROLE_STATUSES = {
+    "worker":    ("EDITED", "REVIEW"),             # 작업자
+    "reviewer":  ("PASS", "EDITED", "REVIEW"),     # 1차 검수자 — REVIEWED 불가
+    "reviewer2": ("PASS", "EDITED", "REVIEWED"),   # 2차 검수자 — REVIEW 불가
+}
+WORKER_STATUSES = ROLE_STATUSES["worker"]
+REVIEWER_ONLY_STATUSES = ("PASS", "REVIEWED")   # (이전 버전 호환) 작업자가 선택할 수 없는 상태
 STATUS_COLORS = {"PASS": "#22A33A", "EDITED": "#FB8C00", "REVIEW": "#D93025", "REVIEWED": "#1E6FE8"}
 
 SCENE_TYPES = [     # (CSV 저장 코드, 화면 표시 이름)
@@ -110,8 +117,10 @@ SCENE_TYPES = [     # (CSV 저장 코드, 화면 표시 이름)
 
 # ================================================================ 로그인 역할
 ROLE_WORKER = "worker"
-ROLE_REVIEWER = "reviewer"
-ROLE_LABELS = {ROLE_WORKER: "작업자", ROLE_REVIEWER: "검수자"}
+ROLE_REVIEWER = "reviewer"          # 1차 검수자
+ROLE_REVIEWER2 = "reviewer2"        # 2차 검수자
+REVIEW_ROLES = (ROLE_REVIEWER, ROLE_REVIEWER2)    # 검수 화면·규칙을 쓰는 역할
+ROLE_LABELS = {ROLE_WORKER: "작업자", ROLE_REVIEWER: "검수자", ROLE_REVIEWER2: "2차 검수자"}
 
 # ================================================================ 화면 · 편집 옵션 (configs/settings.yaml 의 view)
 THUMB_W = int(_view.get("thumb_width", 150))

@@ -52,12 +52,16 @@ kimchi_labeler/                  ← 최상위 (main.py 위치)
 - 위치 변경: `configs/settings.yaml` 의 `output`, 이슈노트 폴더 이름은 `issue_note_dir`
 - 이미지 폴더를 프로젝트 안에 둘 경우 `.gitignore` 에 추가해 GitHub에 올라가지 않게 할 것
 
-## 검수 절차
-- 작업자: EDITED (기본) / REVIEW (판단이 어렵거나 이슈가 있을 때, Issue/Note 기록 필수 → 검수자 확인 요청)
-- 2단계 전수 검수: 정상 → PASS / 오류 → 수정 + 이유 기록 → EDITED / 애매함 → 이유 기록 → REVIEW
-- 3단계 100% Cross Review 대상: EDITED, REVIEW였던 이미지, Class 4 발견, Empty Label
-  - 정상 → REVIEWED (직전 처리자와 다른 검수자만)
-  - 오류 → 수정 후 EDITED(재수정) → 다시 Review
+## 검수 절차 (역할 3개)
+| 역할 | 선택 가능 | 저장 위치 |
+|---|---|---|
+| 작업자 | EDITED, REVIEW (REVIEW 는 이슈 노트 필수) | `작업자/`, `작업자/review/` |
+| 검수자 (1차) | PASS, EDITED, REVIEW | `검수자/<상태>/` |
+| 2차 검수자 | PASS, EDITED, REVIEWED | `2차검수자/<상태>/` |
+
+- EDITED 는 검수자·2차 검수자 모두 이슈 노트 없이 저장 가능
+- REVIEWED 는 2차 검수자만, 1차 검수 기록이 있는 이미지에 대해 1차 검수자와 다른 사람이 선택
+- `label_status.csv` 에 assignee(작업자) / reviewer(1차) / reviewer2(2차) 이름이 남음
 
 ## 구조
 기능별 의사 코드와 "어디를 고치면 되는지"는 **docs/의사코드.md** 참고.

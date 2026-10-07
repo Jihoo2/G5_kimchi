@@ -9,12 +9,14 @@
             로그아웃하면 다시 show_login 으로 돌아오도록 콜백 전달
 
     LoginFrame:
-        [역할]  작업자 ●─ 검수자   (토글 스위치)
+        [역할]  [작업자] [검수자] [2차 검수자]   (하나 선택)
         [이름]  ____________       (Enter 로도 로그인)
         [로그인] → 이름이 비었으면 경고, 아니면 on_login(이름, 역할)
 
 역할에 따른 차이 (자세한 규칙은 src/review/review_rules.py, src/review/workspace.py)
-    작업자: 결과를 작업자/ 에 저장, 상태는 EDITED(기본) 또는 REVIEW(이슈 기록 → 검수자 확인 요청)
+    작업자:     결과를 작업자/ 에 저장, 상태는 EDITED(기본) 또는 REVIEW(이슈 기록 → 검수자 확인 요청)
+    검수자:     PASS / EDITED / REVIEW, 검수자/<상태>/ 에 저장
+    2차 검수자: PASS / EDITED / REVIEWED, 2차검수자/<상태>/ 에 저장
     검수자: PASS / EDITED / REVIEW / REVIEWED 선택, 검수자/<상태>/ 에 저장
 """
 import tkinter as tk
@@ -23,7 +25,6 @@ from tkinter import messagebox, ttk
 from src import config as C
 from src.ui.main_window import LabelingApp
 from src.ui.theme import FONTS
-from src.ui.widgets import ToggleSwitch
 
 
 LOGIN_SIZE = (500, 360)   # 로그인 창 크기 (가로, 세로)
@@ -60,7 +61,8 @@ class LoginFrame(tk.Frame):
     def __init__(self, master, on_login, default_name: str = "", default_role: str = C.ROLE_WORKER):
         super().__init__(master, bg=C.COLOR_BG)
         self.on_login = on_login
-        self.is_reviewer = tk.BooleanVar(value=default_role == C.ROLE_REVIEWER)  # False=작업자
+        roles = (C.ROLE_WORKER, C.ROLE_REVIEWER, C.ROLE_REVIEWER2)
+        self.role_var = tk.StringVar(value=default_role if default_role in roles else C.ROLE_WORKER)
         self.name_var = tk.StringVar(value=default_name)
 
         card = tk.Frame(self, bg=C.COLOR_PANEL,
@@ -74,17 +76,19 @@ class LoginFrame(tk.Frame):
                  bg=C.COLOR_PANEL, fg=C.COLOR_MUTED).grid(
             row=1, column=0, columnspan=2, pady=(0, 18))
 
-        # 역할 토글
+        # 역할 선택: 작업자 / 검수자 / 2차 검수자 (버튼 3개 중 하나)
         tk.Label(card, text="역할", font=FONTS["bold"], bg=C.COLOR_PANEL).grid(
             row=2, column=0, sticky="w", padx=(32, 12), pady=6)
         role = tk.Frame(card, bg=C.COLOR_PANEL)
         role.grid(row=2, column=1, sticky="w", padx=(0, 32), pady=6)
-        self.worker_lbl = tk.Label(role, text="작업자", bg=C.COLOR_PANEL)
-        self.worker_lbl.pack(side="left")
-        ToggleSwitch(role, self.is_reviewer).pack(side="left", padx=10)
-        self.reviewer_lbl = tk.Label(role, text="검수자", bg=C.COLOR_PANEL)
-        self.reviewer_lbl.pack(side="left")
-        self.is_reviewer.trace_add("write", lambda *_: self._update_role())
+        self.role_btns = {}
+        for r in roles:
+            b = tk.Label(role, text=C.ROLE_LABELS[r], bg=C.COLOR_PANEL, padx=10, pady=4,
+                         cursor="hand2", highlightthickness=1)
+            b.pack(side="left", padx=(0, 6))
+            b.bind("<Button-1>", lambda e, v=r: self.role_var.set(v))
+            self.role_btns[r] = b
+        self.role_var.trace_add("write", lambda *_: self._update_role())
         self._update_role()
 
         # 이름
@@ -101,12 +105,15 @@ class LoginFrame(tk.Frame):
         entry.icursor("end")
 
     def _update_role(self):
-        """토글 상태에 따라 '작업자' / '검수자' 글자 강조"""
-        rev = self.is_reviewer.get()
-        on = dict(fg=C.COLOR_ACCENT, font=FONTS["bold"])
-        off = dict(fg=C.COLOR_MUTED, font=FONTS["base"])
-        self.worker_lbl.configure(**(off if rev else on))
-        self.reviewer_lbl.configure(**(on if rev else off))
+        """선택한 역할 버튼만 파란색으로 강조"""
+        cur = self.role_var.get()
+        for r, b in self.role_btns.items():
+            if r == cur:
+                b.configure(bg=C.COLOR_ACCENT, fg="white", font=FONTS["bold"],
+                            highlightbackground=C.COLOR_ACCENT)
+            else:
+                b.configure(bg=C.COLOR_PANEL, fg=C.COLOR_MUTED, font=FONTS["base"],
+                            highlightbackground=C.COLOR_BORDER)
 
     def _login(self):
         """로그인 버튼 / Enter: 이름 확인 후 on_login(이름, 역할) 호출"""
@@ -114,5 +121,4 @@ class LoginFrame(tk.Frame):
         if not name:
             messagebox.showwarning("로그인", "이름을 입력하세요.", parent=self)
             return
-        role = C.ROLE_REVIEWER if self.is_reviewer.get() else C.ROLE_WORKER
-        self.on_login(name, role)
+        self.on_login(name, self.role_var.get())

@@ -27,7 +27,8 @@ output:
 
 folders:
   worker: 작업자            # 작업자 저장 폴더
-  reviewer: 검수자          # 검수자 저장 폴더 (label_status.csv 위치)
+  reviewer: 검수자          # 1차 검수자 저장 폴더 (label_status.csv 위치)
+  reviewer2: 2차검수자      # 2차 검수자 저장 폴더 (label_status.csv 위치, 아래 status 와 같은 하위 폴더)
   status:                   # 검수자/ 아래 상태별 하위 폴더
     PASS: pass
     EDITED: edited
