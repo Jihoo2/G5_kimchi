@@ -95,7 +95,7 @@ class LayoutMixin:
         self.draw_btn = btn(grp, "+ 새 BBox", lambda: self.set_mode("draw"),
                             f"{hint}\n드래그로 새 BBox 그리기 (W)")
         self.select_btn = btn(grp, "선택·이동", lambda: self.set_mode("select"),
-                              f"{hint}\nBBox 클릭 후 드래그로 이동, 모서리로 크기 조절 (E)")
+                              f"{hint}\nBBox 클릭 후 드래그로 이동, 모서리·테두리로 크기 조절 (E)")
         btn(grp, "삭제", self.delete_selected, f"{hint}\n선택한 BBox 삭제 (Delete)")
 
     def _build_center(self, center):
@@ -262,6 +262,11 @@ class LayoutMixin:
         # 7) 필터 / QA 도구
         c9 = make_card(right, "필터 / QA 도구")
         c9.pack(fill="x")
+        self.todo_btn = ttk.Button(c9.body, text="미완료만 보기", style="Small.TButton",
+                                   command=lambda: self.set_filter("TODO"))
+        self.todo_btn.pack(side="left", padx=(0, 4))
+        Tooltip(self.todo_btn, "내 역할로 아직 저장하지 않은 이미지만 목록에 표시\n"
+                               "(작업자로 폴더를 열면 자동으로 켜짐, 다시 누르면 전체 보기)")
         self.review_btn = ttk.Button(c9.body, text="REVIEW만 보기", style="Small.TButton",
                                      command=lambda: self.set_filter("REVIEW"))
         self.review_btn.pack(side="left", padx=(0, 4))
