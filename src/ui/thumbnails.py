@@ -114,7 +114,7 @@ class ThumbnailStrip(tk.Frame):
                                outline=C.COLOR_ACCENT if is_cur else C.COLOR_BORDER,
                                width=3 if is_cur else 1, tags=tag)
 
-            meta = self.app.ws.effective_meta(name) if self.app.ws else None
+            meta = self.app.ws.display_meta(name) if self.app.ws else None   # 원본 폴더면 배지 없음
             if meta and meta.status:     # 상태 배지
                 color = C.STATUS_COLORS.get(meta.status, C.COLOR_MUTED)
                 t = c.create_text(x + TW - 6, y + 5, anchor="ne", text=meta.status,

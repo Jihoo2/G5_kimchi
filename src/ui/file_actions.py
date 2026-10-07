@@ -56,8 +56,9 @@ class LoadSaveMixin:
             return
 
         self.folder, self.image_names, self.ws = folder, names, ws
-        self.filter_mode = None
-        self._apply_filter_list()
+        # 작업자: 이미 저장한 이미지는 목록에서 빼고 '미완료만' 보여줌 (완료 이미지는 라벨 완료 목록에서 열기)
+        self.filter_mode = "TODO" if self.role != C.ROLE_REVIEWER else None
+        self._apply_filter_list()                 # 미완료가 하나도 없으면 자동으로 전체 보기
         self.thumbs.clear_cache()
         own = ws.own_store
         start = next((i for i, n in enumerate(names)
@@ -65,8 +66,9 @@ class LoadSaveMixin:
         self.cur = -1
         self.load_index(start)
         root_name = os.path.basename(ws.root)
-        self.set_message(f"{len(names)}장 로드 · 저장 위치: {root_name}/{ws.own_dir_label}/ · "
-                         f"미완료 첫 이미지({start + 1}번)부터 시작합니다.")
+        todo = sum(1 for n in names if not (own.get(n) and own.get(n).status))
+        view = "미완료만 표시" if self.filter_mode == "TODO" else "전체 표시"
+        self.set_message(f"{len(names)}장 중 미완료 {todo}장 ({view}) · 저장 위치: {root_name}/{ws.own_dir_label}/")
 
     def load_index(self, idx: int):
         """idx번째 이미지 열기
@@ -95,11 +97,16 @@ class LoadSaveMixin:
                 self.set_message(f"TXT 일부를 읽지 못했습니다: {errors[0]}{more} → Validation으로 확인",
                                  "error")
             else:
-                self.set_message(f"{name} · BBox {len(self.boxes)}개 불러옴 (출처: {src})")
+                done_at = self.ws.saved_elsewhere(name)
+                if done_at:
+                    self.set_message(f"{name} · 원본 모습 표시 중 (이미 {done_at}/ 에 저장됨 → "
+                                     f"수정하려면 {done_at}/ 폴더를 여세요)", "error")
+                else:
+                    self.set_message(f"{name} · BBox {len(self.boxes)}개 불러옴 (출처: {src})")
 
-        own = self.ws.own_meta(name)
+        own = self.ws.display_own_meta(name)          # 원본 폴더면 None (저장 결과를 표시하지 않음)
         # 검수자가 처음 여는 이미지: Scene/Note는 작업자 기록을 이어받고, 검수 상태는 비워둠
-        base = own or self.ws.effective_meta(name)
+        base = own or self.ws.display_meta(name)
         self._loading = True
         try:
             self.status_var.set(own.status if own else "")
@@ -126,8 +133,9 @@ class LoadSaveMixin:
         if name is None or self.ws is None:
             worker_meta = reviewer_meta = None
         else:
-            worker_meta = self.ws.worker_store.get(name)
-            reviewer_meta = self.ws.reviewer_store.get(name)
+            shown = self.ws.is_result_folder           # 원본 폴더면 다른 폴더의 이름 기록을 표시하지 않음
+            worker_meta = self.ws.worker_store.get(name) if shown else None
+            reviewer_meta = self.ws.reviewer_store.get(name) if shown else None
         if self.role == C.ROLE_REVIEWER:
             self.assignee_var.set(worker_meta.assignee if worker_meta else "")
             self.reviewer_var.set(self.user_name)
@@ -171,6 +179,18 @@ class LoadSaveMixin:
                 messagebox.showwarning("검수 규칙", problem, parent=self.root)
                 self.set_message(problem.split("\n")[0], "error")
                 return False
+
+        # 원본 폴더에서 이미 저장한 이미지를 다시 저장하면 이전 작업을 덮어씀 → 확인
+        done_at = self.ws.saved_elsewhere(name)
+        if done_at and not messagebox.askyesno(
+                "이미 저장된 이미지",
+                f"'{name}' 은(는) 이미 {done_at}/ 에 저장되어 있습니다.\n"
+                "지금 화면은 원본 폴더의 모습이라, 저장하면 이전 작업을 덮어씁니다.\n\n"
+                f"이전 작업을 고치려면 {done_at}/ 폴더를 열어서 수정하세요.\n"
+                "그래도 지금 내용으로 덮어쓸까요?",
+                parent=self.root):
+            self.set_message(f"저장 취소 · 이전 작업은 {done_at}/ 폴더에서 수정하세요.", "error")
+            return False
 
         # 다른 이미지 폴더의 같은 이름 결과가 저장 폴더에 있으면 덮어쓰기 전에 확인
         other = self.ws.overwrite_conflict(name)
