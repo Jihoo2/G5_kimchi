@@ -39,7 +39,7 @@ class BoxEditMixin:
         self.boxes.append(box)
         self.selected = len(self.boxes) - 1
         self._after_boxes_changed()
-        self.set_message("미확정 BBox: 박스 안을 드래그해 이동, 모서리로 크기 조절, 방향키로 미세 이동, "
+        self.set_message("미확정 BBox: 박스 안을 드래그해 이동, 모서리·테두리로 크기 조절, 방향키로 미세 이동, "
                          "숫자키로 Class 변경 → Enter 확정 / Esc 취소")
 
     def pending_index(self):
