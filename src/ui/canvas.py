@@ -11,7 +11,7 @@
     마우스 누름 (_on_press):
         HUD 위             → 무시 (더블클릭 = 편집기)
         Pan 모드           → 화면 이동 시작
-        선택 박스 모서리    → 크기 조절 시작
+        선택 박스 모서리·테두리 → 크기 조절 시작 (테두리는 그 방향만)
         선택 박스 안쪽      → 이동 시작 (모드 상관없음)
         선택·이동 모드      → 클릭한 박스 선택
         그리기 모드        → 미확정 박스가 있으면 막음, 없으면 새 박스 그리기 시작
@@ -46,7 +46,11 @@ MODE_CURSORS = {"draw": "crosshair", "select": "arrow", "pan": "hand2"}
 
 class ImageCanvas(tk.Frame):
     """이미지 + BBox + HUD 를 그리는 캔버스 (app = LabelingApp)"""
-    HANDLE = 5   # 리사이즈 핸들 반지름(px)
+    HANDLE = 5          # 리사이즈 핸들 반지름(px)
+    EDGE_TOL = 5        # 테두리(변) 잡기 허용 거리(px)
+    EDGE_MIN_PX = 24    # 화면에서 이보다 작은 변은 테두리 조절 끔 (작은 박스도 이동 가능하게)
+    RESIZE_CURSORS = {"n": "sb_v_double_arrow", "s": "sb_v_double_arrow",
+                      "w": "sb_h_double_arrow", "e": "sb_h_double_arrow"}   # 모서리는 'sizing'
 
     def __init__(self, master, app):
         """캔버스·줌 표시·HUD 편집기 생성, 마우스/휠 이벤트 연결"""
@@ -337,14 +341,27 @@ class ImageCanvas(tk.Frame):
 
             if is_sel:
                 h = self.HANDLE
-                for hx, hy in ((x1, y1), (x2, y1), (x1, y2), (x2, y2)):
+                for hx, hy in ((x1, y1), (x2, y1), (x1, y2), (x2, y2)):          # 모서리 핸들
                     c.create_rectangle(hx - h, hy - h, hx + h, hy + h, fill="white",
                                        outline=color, width=2, tags="box")
+                mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+                e = h - 1
+                edges = []
+                if x2 - x1 >= self.EDGE_MIN_PX:                                   # 위·아래 변 가운데
+                    edges += [(mx, y1), (mx, y2)]
+                if y2 - y1 >= self.EDGE_MIN_PX:                                   # 왼쪽·오른쪽 변 가운데
+                    edges += [(x1, my), (x2, my)]
+                for hx, hy in edges:
+                    c.create_rectangle(hx - e, hy - e, hx + e, hy + e, fill="white",
+                                       outline=color, width=1, tags="box")
         self.draw_hud()
 
     # ------------------------------------------------------------ hit test
     def _handle_at(self, cx, cy):
-        """(cx, cy) 가 선택 박스의 모서리 핸들 위면 'nw'/'ne'/'sw'/'se'"""
+        """(cx, cy) 가 선택 박스의 크기 조절 위치면 방향 문자열, 아니면 None
+            모서리 → 'nw' / 'ne' / 'sw' / 'se'  (가로·세로 동시 조절)
+            테두리 → 'n' / 's' / 'w' / 'e'      (그 방향만 조절)
+        박스가 화면에서 너무 작으면 테두리 판정은 끔 → 안쪽을 잡아 이동할 공간 확보"""
         sel = self.app.selected
         if sel is None or self.image is None or sel >= len(self.app.boxes):
             return None
@@ -356,6 +373,19 @@ class ImageCanvas(tk.Frame):
                                ("sw", (x1, y2)), ("se", (x2, y2))):
             if abs(cx - hx) <= r and abs(cy - hy) <= r:
                 return name
+        t = self.EDGE_TOL
+        in_x = x1 + r < cx < x2 - r            # 위·아래 변: 모서리 핸들 사이 구간
+        in_y = y1 + r < cy < y2 - r            # 왼쪽·오른쪽 변
+        if x2 - x1 >= self.EDGE_MIN_PX and in_x:
+            if abs(cy - y1) <= t:
+                return "n"
+            if abs(cy - y2) <= t:
+                return "s"
+        if y2 - y1 >= self.EDGE_MIN_PX and in_y:
+            if abs(cx - x1) <= t:
+                return "w"
+            if abs(cx - x2) <= t:
+                return "e"
         return None
 
     def _inside(self, idx, cx, cy) -> bool:
@@ -470,13 +500,13 @@ class ImageCanvas(tk.Frame):
         elif t == "resize":
             ix, iy = self.clamp_img(*self.to_image(e.x, e.y))
             h = d["handle"]
-            if "w" in h:
+            if "w" in h:            # 'n', 's' 처럼 세로 방향만 있으면 가로는 그대로
                 b.x1 = ix
-            else:
+            elif "e" in h:
                 b.x2 = ix
-            if "n" in h:
+            if "n" in h:            # 'w', 'e' 처럼 가로 방향만 있으면 세로는 그대로
                 b.y1 = iy
-            else:
+            elif "s" in h:
                 b.y2 = iy
             if b.x1 > b.x2:   # 반대편으로 넘어가면 핸들도 뒤집기
                 b.x1, b.x2 = b.x2, b.x1
@@ -564,8 +594,9 @@ class ImageCanvas(tk.Frame):
         if self._on_hud(e.x, e.y):
             self._update_cursor("hand2")
             return
-        if self._handle_at(e.x, e.y):
-            self._update_cursor("sizing")
+        handle = self._handle_at(e.x, e.y)
+        if handle:
+            self._update_cursor(self.RESIZE_CURSORS.get(handle, "sizing"))
             return
         sel = self.app.selected
         if ((sel is not None and self._inside(sel, e.x, e.y))
