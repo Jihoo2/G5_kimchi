@@ -8,6 +8,8 @@
     refresh_completed():   내 역할 CSV에 기록된 이미지를 저장 순서대로 + 완료율 바
     refresh_csv_info():    저장될 status / assignee / reviewer / scene_type 미리보기
 """
+import os
+
 from src import config as C
 
 
@@ -18,18 +20,23 @@ class PanelMixin:
         """화면 전체 갱신: 파일명·진행률·필터 버튼·라벨 표·완료 목록·CSV 정보·HUD·썸네일"""
         total = len(self.image_names)
         if 0 <= self.cur < total:
-            self.file_lbl.configure(text=f"파일 이름 :  {self.image_names[self.cur]}")
+            shown = getattr(self, "viewing_result", None)
+            tail = f"     [저장 결과 보기: {shown}]" if shown else ""
+            self.file_lbl.configure(text=f"파일 이름 :  {self.image_names[self.cur]}{tail}")
             self.pos_lbl.configure(text=f"진행률  {self.cur + 1} / {total}")
         else:
             self.file_lbl.configure(text="파일 이름 :  -")
             self.pos_lbl.configure(text="진행률  0 / 0")
 
         suffix = f" · {self._filter_label(self.filter_mode)}만 보기" if self.filter_mode else ""
-        self.strip_card.title_lbl.configure(text=f"이미지 목록 ({len(self.view_indices)}개){suffix}")
+        self.strip_card.title_lbl.configure(
+            text=f"{self._folder_title()} 이미지 목록 ({len(self.view_indices)}개){suffix}")
         self.review_btn.configure(
             style="SmallActive.TButton" if self.filter_mode == "REVIEW" else "Small.TButton")
         self.edited_btn.configure(
             style="SmallActive.TButton" if self.filter_mode == "EDITED" else "Small.TButton")
+        self.todo_btn.configure(
+            style="SmallActive.TButton" if self.filter_mode == "TODO" else "Small.TButton")
         self.cross_btn.configure(
             style="SmallActive.TButton" if self.filter_mode == "CROSS" else "Small.TButton")
 
@@ -38,6 +45,16 @@ class PanelMixin:
         self.refresh_csv_info()
         self.view.overlay.refresh()
         self.thumbs.render(follow=True)
+
+    def _folder_title(self) -> str:
+        """이미지 목록 제목에 쓸 '지금 연 폴더' 이름
+            결과 폴더(작업자/, 작업자/review/, 검수자/pass/ …) → 작업자/review 처럼 경로로
+            그 외 → 폴더 이름 (예: 이물검출_학습데이터1)"""
+        if not self.folder:
+            return ""
+        if self.ws is not None and self.ws.is_result_folder:
+            return self.ws.rel(self.ws.src)
+        return os.path.basename(os.path.normpath(self.folder))
 
     def refresh_table(self):
         """오른쪽 '라벨 목록' 표 다시 그리기"""
@@ -88,13 +105,13 @@ class PanelMixin:
         self.pct_lbl.configure(text=f"완료 {pct:.1f}%")
 
     def _on_done_select(self, _e=None):
-        """완료 목록 클릭 → 해당 이미지로 이동"""
+        """완료 목록 클릭 → 해당 이미지의 '저장 결과'(내 역할 폴더의 이미지 + TXT) 표시"""
         sel = self.done_list.curselection()
         if not sel:
             return
         name = self._done_names[sel[0]]
         if name in self.image_names:
-            self.goto(self.image_names.index(name))
+            self.open_result(self.image_names.index(name))
         self.refresh_completed()           # 이동이 취소된 경우 선택 복원
         self.view.canvas.focus_set()
 
