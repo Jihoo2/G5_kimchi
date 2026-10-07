@@ -5,7 +5,7 @@
                from_yolo() → YOLO 값을 픽셀 좌표 Box로           ← TXT 읽기용
                state       "" 저장됨 / "new" 신규 / "modified" 수정
                pending     True = 그린 직후 Enter 확정 전
-    UndoStack  BBox 목록 스냅샷을 쌓아 두고 Ctrl+Z 때 꺼냄 (이미지를 바꾸면 비움)
+    UndoStack  BBox 목록 스냅샷을 쌓아 두고 Ctrl+Z(Undo) / Ctrl+Shift+Z·Ctrl+Y(Redo) 때 꺼냄 (이미지를 바꾸면 비움)
 """
 from __future__ import annotations
 
@@ -74,26 +74,61 @@ class Box:
 
 
 class UndoStack:
-    """BBox 리스트 스냅샷 기반 Undo (이미지별로 비움)"""
+    """BBox 리스트 스냅샷 기반 Undo / Redo (이미지별로 비움)
+
+        push(박스들)      박스를 바꾸기 직전 상태 저장 → 새 작업이 생겼으니 Redo 기록은 비움
+        undo(현재 박스)   직전 상태 꺼내기 (현재 상태는 Redo 쪽으로)          Ctrl+Z
+        redo(현재 박스)   Undo 했던 상태 다시 꺼내기 (현재 상태는 Undo 쪽으로)  Ctrl+Shift+Z / Ctrl+Y
+        pop()            Redo 기록 없이 직전 상태만 꺼내기 (자동 되돌리기용)
+    """
 
     def __init__(self, limit: int = 100):
         """limit 개까지만 보관"""
         self.limit = limit
         self._stack: list[list[Box]] = []
+        self._redo: list[list[Box]] = []
 
-    def push(self, boxes: list[Box]) -> None:
-        """박스 목록 전체를 복사해서 저장"""
-        self._stack.append([b.copy() for b in boxes])
+    @staticmethod
+    def _copy(boxes):
+        return [b.copy() for b in boxes]
+
+    def _push_undo(self, boxes) -> None:
+        self._stack.append(self._copy(boxes))
         if len(self._stack) > self.limit:
             self._stack.pop(0)
 
+    def push(self, boxes: list[Box]) -> None:
+        """박스 목록 전체를 복사해서 저장 (새 작업 → Redo 기록 삭제)"""
+        self._push_undo(boxes)
+        self._redo.clear()
+
+    def undo(self, current: list[Box]):
+        """직전 스냅샷 꺼내기, 현재 상태는 Redo 로 보관 (없으면 None)"""
+        if not self._stack:
+            return None
+        self._redo.append(self._copy(current))
+        return self._stack.pop()
+
+    def redo(self, current: list[Box]):
+        """Undo 했던 스냅샷 다시 꺼내기, 현재 상태는 Undo 로 보관 (없으면 None)"""
+        if not self._redo:
+            return None
+        self._push_undo(current)
+        return self._redo.pop()
+
     def pop(self):
-        """가장 최근 스냅샷 꺼내기 (없으면 None)"""
+        """가장 최근 스냅샷 꺼내기 — Redo 기록을 남기지 않음 (없으면 None)"""
         return self._stack.pop() if self._stack else None
 
     def clear(self) -> None:
         """전체 비우기 (이미지 바꿀 때)"""
         self._stack.clear()
+        self._redo.clear()
+
+    @property
+    def redo_count(self) -> int:
+        """남은 Redo 개수"""
+        return len(self._redo)
 
     def __len__(self) -> int:
         """남은 Undo 개수"""

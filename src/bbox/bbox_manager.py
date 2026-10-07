@@ -9,6 +9,7 @@
     nudge_selected(dx, dy):      방향키로 선택 박스 이동 (이미지 밖으로 못 나감)
     delete_selected():  Delete   선택 박스 삭제
     undo_action():      Ctrl+Z   Undo 스택에서 이전 박스 목록 복원
+    redo_action():      Ctrl+Shift+Z / Ctrl+Y   Undo 했던 변경 다시 실행 (새로 수정하면 Redo 기록은 사라짐)
     update_box_from_overlay():   HUD 수정 패널 입력값으로 박스 수정
     select_box(idx):             미확정 박스가 있으면 그 박스만 선택 가능
     _after_boxes_changed():      (위 모든 변경 뒤 공통)
@@ -107,8 +108,9 @@ class BoxEditMixin:
         self.set_message(f"BBox 삭제: {b.cls} {C.CLASS_NAMES.get(b.cls, '?')} (Ctrl+Z로 되돌리기)")
 
     def undo_action(self, silent: bool = False):
-        """마지막 BBox 변경 되돌리기 (Ctrl+Z)"""
-        snap = self.undo.pop()
+        """마지막 BBox 변경 되돌리기 (Ctrl+Z)
+        silent=True: 캔버스가 잘못된 조작을 자동으로 되돌릴 때 → Redo 기록을 남기지 않음"""
+        snap = self.undo.pop() if silent else self.undo.undo(self.boxes)
         if snap is None:
             if not silent:
                 self.set_message("되돌릴 작업이 없습니다.")
@@ -118,7 +120,19 @@ class BoxEditMixin:
             self.selected = None
         self._after_boxes_changed()
         if not silent:
-            self.set_message(f"Undo 완료 · 남은 기록 {len(self.undo)}개")
+            self.set_message(f"Undo 완료 · 남은 Undo {len(self.undo)}개 · Redo {self.undo.redo_count}개")
+
+    def redo_action(self):
+        """Undo 했던 BBox 변경 다시 실행 (Ctrl+Shift+Z / Ctrl+Y)"""
+        snap = self.undo.redo(self.boxes)
+        if snap is None:
+            self.set_message("다시 실행할 작업이 없습니다.")
+            return
+        self.boxes = snap
+        if self.selected is not None and self.selected >= len(self.boxes):
+            self.selected = None
+        self._after_boxes_changed()
+        self.set_message(f"Redo 완료 · 남은 Undo {len(self.undo)}개 · Redo {self.undo.redo_count}개")
 
     def update_box_from_overlay(self, cid, cx, cy, w, h):
         """HUD 편집기에서 입력한 Class / 정규화 좌표로 선택 BBox 수정"""
