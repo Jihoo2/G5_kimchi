@@ -7,11 +7,13 @@
     confirm_pending():  Enter    미확정 해제
     cancel_pending():   Esc      미확정 박스 삭제
     nudge_selected(dx, dy):      방향키로 선택 박스 이동 (이미지 밖으로 못 나감)
+    resize_selected(방향, grow): Ctrl+방향키 그 방향으로 늘림 / Alt+방향키 그 방향 변을 안쪽으로 (0.0005씩)
     delete_selected():  Delete   선택 박스 삭제
     undo_action():      Ctrl+Z   Undo 스택에서 이전 박스 목록 복원
     redo_action():      Ctrl+Shift+Z / Ctrl+Y   Undo 했던 변경 다시 실행 (새로 수정하면 Redo 기록은 사라짐)
     update_box_from_overlay():   HUD 수정 패널 입력값으로 박스 수정
     select_box(idx):             미확정 박스가 있으면 그 박스만 선택 가능
+    select_next_box(step):       Tab 다음 박스 / Shift+Tab 이전 박스 (끝에서 처음으로 순환)
     _after_boxes_changed():      (위 모든 변경 뒤 공통)
         미저장 표시 → 상태가 비었거나 PASS/REVIEWED면 EDITED로 → 화면 갱신
 
@@ -73,6 +75,39 @@ class BoxEditMixin:
         self.selected = None
         self._after_boxes_changed()
         self.set_message("미확정 BBox를 취소했습니다.")
+
+    def resize_selected(self, direction: str, grow: bool = True):
+        """선택 박스의 direction 쪽 변을 RESIZE_STEP(기본 0.0005, 정규화) 만큼 바깥/안쪽으로
+            Ctrl + 방향키 → grow=True  : 그 방향으로 늘어남   (예: Ctrl+→ 오른쪽 변이 오른쪽으로)
+            Alt  + 방향키 → grow=False : 그 방향 변이 안쪽으로 (예: Alt+→ 오른쪽 변이 왼쪽으로)
+        이미지 밖으로는 못 늘어나고, 최소 크기보다 작아지면 줄이지 않음"""
+        if self.selected is None or self.image is None:
+            self.set_message("크기를 바꿀 BBox를 먼저 선택하세요.", "error")
+            return
+        b = self.boxes[self.selected]
+        W, H = self.img_w, self.img_h
+        horizontal = direction in ("Left", "Right")
+        d = C.RESIZE_STEP * (W if horizontal else H) * (1 if grow else -1)
+        x1, y1, x2, y2 = b.x1, b.y1, b.x2, b.y2
+        if direction == "Right":
+            x2 = min(W, x2 + d)
+        elif direction == "Left":
+            x1 = max(0.0, x1 - d)
+        elif direction == "Up":
+            y1 = max(0.0, y1 - d)
+        elif direction == "Down":
+            y2 = min(H, y2 + d)
+        if x2 - x1 < C.MIN_BOX_PX or y2 - y1 < C.MIN_BOX_PX:
+            self.set_message("더 이상 줄일 수 없습니다 (최소 크기).", "error")
+            return
+        if (x1, y1, x2, y2) == (b.x1, b.y1, b.x2, b.y2):
+            self.set_message("이미지 끝이라 더 늘릴 수 없습니다.", "error")
+            return
+        self.push_undo()
+        b.x1, b.y1, b.x2, b.y2 = x1, y1, x2, y2
+        self.box_changed(self.selected)
+        _, _, _, w, h = b.to_yolo(W, H)
+        self.set_message(f"BBox {'늘림' if grow else '줄임'} ({direction}) · W {w:.4f}  H {h:.4f}")
 
     def nudge_selected(self, dx, dy):
         """방향키 이동 (원본 이미지 픽셀 단위)"""
@@ -168,6 +203,23 @@ class BoxEditMixin:
         self.refresh_table()
         self.view.overlay.refresh()
         self.refresh_csv_info()
+
+    def select_next_box(self, step: int = 1):
+        """Tab: 라벨 목록 순서대로 다음 박스 선택 (마지막 다음은 처음), Shift+Tab: 이전 박스
+        아무것도 선택 안 했으면 Tab → 첫 번째, Shift+Tab → 마지막"""
+        n = len(self.boxes)
+        if n == 0:
+            self.set_message("선택할 BBox가 없습니다.")
+            return
+        if self.selected is None:
+            idx = 0 if step > 0 else n - 1
+        else:
+            idx = (self.selected + step) % n
+        self.select_box(idx)
+        if self.selected is not None:
+            b = self.boxes[self.selected]
+            self.set_message(f"BBox {self.selected + 1}/{n} 선택: {b.cls} {C.CLASS_NAMES.get(b.cls, '?')}"
+                             "  (Tab 다음 · Shift+Tab 이전)")
 
     def select_box(self, idx):
         """BBox 선택 (미확정 BBox가 있으면 다른 박스로 바꿀 수 없음)"""
