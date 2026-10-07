@@ -20,6 +20,7 @@
         그리기: 거의 안 움직였으면 '클릭 = 박스 선택', 아니면 app.add_box()
         이동·크기 조절: app.box_changed()
     휠: 마우스 위치 기준 확대/축소   /   휠 클릭·우클릭 드래그: 언제나 Pan
+    center_on_box(): 키패드 . / Ctrl+Space → 선택 박스를 화면 가운데로 (줌 배율 유지)
     draw_hud():  선택 박스 옆에 반투명 정보 카드 (Class, 정규화 좌표, 픽셀 좌표)
                  아래 이미지를 어둡게 합성해서 반투명처럼 보이게 함 (Tk는 투명도 미지원)
 """
@@ -241,6 +242,20 @@ class ImageCanvas(tk.Frame):
             self.ox = (cw - W * self.scale) / 2
             self.oy = (ch - H * self.scale) / 2
         self.request_render()
+
+    def center_on_box(self, idx) -> bool:
+        """idx 박스의 중심이 화면 가운데 오도록 시점 이동 (줌 배율은 그대로 유지)"""
+        if self.image is None or idx is None or not 0 <= idx < len(self.app.boxes):
+            return False
+        b = self.app.boxes[idx]
+        cw, ch = self._canvas_size()
+        bx, by = (b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2
+        self.ox = cw / 2 - bx * self.scale
+        self.oy = ch / 2 - by * self.scale
+        self._fitted = False                     # 창 크기가 바뀌어도 자동 Fit 으로 돌아가지 않게
+        self.overlay.close()                     # 열려 있던 수정 패널은 위치가 어긋나므로 닫음
+        self.request_render()
+        return True
 
     def zoom(self, factor, cx=None, cy=None):
         """(cx, cy) 화면 지점을 고정한 채 확대/축소"""
