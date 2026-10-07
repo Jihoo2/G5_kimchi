@@ -23,6 +23,10 @@ class ReviewMixin:
         if self.role != C.ROLE_REVIEWER or self.ws is None:
             self.cr_lbl.configure(text="")
             return
+        if not self.ws.is_result_folder:          # 원본 폴더: 저장된 검수/작업 기록은 표시하지 않음
+            self.cr_lbl.configure(text="원본 폴더 (저장된 작업 결과는 표시하지 않음)\n"
+                                       "작업 결과 검수는 작업자/ 폴더를 열어서 진행")
+            return
         reasons = self.ws.cross_review_reasons(name)
         if not reasons:
             m = self.ws.reviewer_store.get(name)
@@ -119,7 +123,7 @@ class ReviewMixin:
             else:
                 text = "저장 전 상태 선택 필요"
         else:
-            text = f"저장 위치: {self.ws.rel(self.ws.worker_dir)}/"
+            text = f"저장 위치: {self.ws.rel(self.ws.target_dir(st))}/"
             if st == "REVIEW":
-                text += "  (REVIEW: 검수자 확인 요청)"
+                text += "\n(이미지 + 라벨 + 리뷰노트)"
         self.save_dir_lbl.configure(text=text)

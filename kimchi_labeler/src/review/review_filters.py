@@ -6,7 +6,7 @@
         view_indices 다시 계산 → 현재 이미지가 목록에 없으면 첫 이미지로 이동
     _match_filter(name, mode):
         CROSS → Workspace.cross_review_reasons(name)가 있으면 대상
-        그 외 → 표시용 상태(effective_meta)가 mode와 같으면 대상
+        그 외 → 표시용 상태(display_meta)가 mode와 같으면 대상 (원본 폴더에서는 해당 없음)
 """
 from tkinter import messagebox
 
@@ -33,13 +33,16 @@ class FilterMixin:
     @staticmethod
     def _filter_label(mode):
         """필터 이름을 화면 표시용 문자열로"""
-        return "Cross Review 대상" if mode == "CROSS" else (mode or "")
+        return {"CROSS": "Cross Review 대상", "TODO": "미완료"}.get(mode, mode or "")
 
     def _match_filter(self, name, mode) -> bool:
         """이미지가 필터 조건에 맞는지 판단"""
         if mode == "CROSS":
-            return bool(self.ws.cross_review_reasons(name))
-        m = self.ws.effective_meta(name)
+            return self.ws.is_result_folder and bool(self.ws.cross_review_reasons(name))
+        if mode == "TODO":                       # 내 역할로 아직 저장하지 않은 이미지
+            m = self.ws.own_meta(name)
+            return not (m and m.status)
+        m = self.ws.display_meta(name)            # 원본 폴더에서는 기록 없음
         return bool(m) and m.status == mode
 
     def _apply_filter_list(self):

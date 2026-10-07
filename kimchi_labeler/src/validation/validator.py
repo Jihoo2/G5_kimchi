@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import os
 
-from src.config import CLASS_NAMES, ENABLED_CLASSES, NUM_CLASSES
+from src.config import CLASS_NAMES, ENABLED_CLASSES, NUM_CLASSES, REVIEW_NOTE_SUFFIX
 from src.yolo.yolo_loader import parse_yolo_line
 
 
@@ -105,6 +105,7 @@ def validate_folder(image_names: list[str], resolve, meta_of, scan_dirs: list[st
             continue
         for fn in sorted(os.listdir(d)):
             if (fn.lower().endswith(".txt") and fn != "classes.txt"
+                    and not fn.endswith(REVIEW_NOTE_SUFFIX + ".txt")
                     and os.path.splitext(fn)[0] not in stems):
                 add(os.path.join(os.path.basename(d), fn), "-", "WARN", "짝이 되는 이미지가 없는 TXT")
 

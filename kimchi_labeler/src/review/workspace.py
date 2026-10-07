@@ -4,7 +4,8 @@
     <이미지 폴더>/                 *.jpg (+ 받아온 *.txt) — 절대 수정하지 않음 (어디에 있든 상관없음)
     <main.py 가 있는 최상위 폴더>/
       ├─ 작업자/                   이미지 복사본 + *.txt + label_status.csv
-      │    └─ 이슈노트/            작업자 Issue/Note 메모 (<이미지이름>.txt, 메모장으로 열림)
+      │    ├─ 이슈노트/            작업자 Issue/Note 메모 (<이미지이름>.txt, 메모장으로 열림)
+      │    └─ review/              작업자 REVIEW: 이미지 복사본 + *.txt + <이미지이름>_리뷰노트.txt
       └─ 검수자/                   label_status.csv
            ├─ pass/  edited/  review/  reviewed/      *.txt (상태별)
 
@@ -15,15 +16,16 @@
     → 같은 이름으로 저장하려 하면 덮어쓰기 전에 확인 창 (overwrite_conflict)
 
 의사 코드
-    resolve_label(이미지):        화면에 불러올 TXT 찾기 (다른 폴더 결과는 건너뜀)
-        작업자: 작업자/ → 원본 폴더
-        검수자: 검수자/<상태>/ → 작업자/ → 원본 폴더
+    resolve_label(이미지):        지금 연 폴더 안의 같은 이름 TXT 만 불러옴 (작업자·검수자 공통)
+        원본 폴더 → 원본 TXT / 작업자/ → 작업자 TXT / 작업자/review/ → 리뷰 TXT
+        (저장 결과는 그 결과 폴더를 열어야 보임)
     save_label(이미지, 박스, 상태):
-        저장 폴더 = 작업자/  또는  검수자/<상태>/   (없으면 생성, 있으면 그대로 사용)
+        저장 폴더 = 작업자/ (REVIEW 는 작업자/review/)  또는  검수자/<상태>/   (없으면 생성, 있으면 그대로 사용)
         (작업자) 원본 이미지 복사본 저장 — 원본은 그대로
         TXT 저장
-        (검수자) 다른 상태 폴더에 남아 있던 같은 이미지 결과 삭제 → 한 곳에만 존재
+        다른 상태 폴더에 남아 있던 같은 이미지 결과 삭제 → 한 곳에만 존재
     save_issue_note(기록):        Note 내용 → 작업자/이슈노트/<이미지이름>.txt (비우면 파일 삭제)
+                                  REVIEW 체크 시 → 작업자/review/<이미지이름>_리뷰노트.txt
     cross_review_reasons(이미지):  6.3 100% Cross Review 대상인지
         검수 기록이 EDITED / REVIEW, 또는 Class 4 발견, 또는 Empty Label → 사유 목록
 """
@@ -51,6 +53,8 @@ def dataset_folder(folder: str) -> str:
     grand = os.path.dirname(parent)
     roles = (C.WORKER_DIR, C.REVIEWER_DIR)
     statuses = set(C.STATUS_DIRS.values())
+    if name == C.WORKER_REVIEW_DIR and os.path.basename(parent) == C.WORKER_DIR:  # …/작업자/review
+        return dataset_folder(parent)
     if name in statuses and os.path.basename(parent) == C.REVIEWER_DIR:          # 이미지폴더/검수자/<상태>
         return grand
     if name in statuses and os.path.basename(grand) == C.REVIEWER_DIR:           # 상위/검수자/<데이터셋>/<상태>
@@ -149,6 +153,7 @@ class Workspace:
         sub = tuple(self.dataset.split(os.sep)) if (C.OUTPUT_PER_DATASET and self.dataset) else ()
         self.worker_dir = os.path.join(self.root, C.WORKER_DIR, *sub)       # 작업자/<데이터셋>/
         self.reviewer_dir = os.path.join(self.root, C.REVIEWER_DIR, *sub)   # 검수자/<데이터셋>/
+        self.worker_review_dir = os.path.join(self.worker_dir, C.WORKER_REVIEW_DIR)   # 작업자/review/
         self.status_dirs = {st: os.path.join(self.reviewer_dir, d) for st, d in C.STATUS_DIRS.items()}
         self.pass_dir = self.status_dirs["PASS"]
         self.review_dir = self.status_dirs["REVIEW"]
@@ -189,30 +194,55 @@ class Workspace:
         """검수자 상태별 폴더 목록 (마지막은 이전 버전 호환용 검수자/ 바로 아래)"""
         return list(self.status_dirs.values()) + [self.reviewer_dir]
 
+    def worker_dirs(self) -> list[str]:
+        """작업자 저장 폴더: 작업자/review/ (REVIEW), 작업자/ (EDITED)"""
+        return [self.worker_review_dir, self.worker_dir]
+
     def output_dirs(self) -> list[str]:
         """내 역할이 저장하는 폴더들 (Validation 짝 없는 TXT 검사용)"""
-        return self.reviewer_dirs() if self.is_reviewer else [self.worker_dir]
+        return self.reviewer_dirs() if self.is_reviewer else self.worker_dirs()
 
     # ------------------------------------------------------------ 불러오기
-    def _belongs(self, view: "SourceView", name: str) -> bool:
-        """결과 폴더의 TXT 가 지금 연 이미지 폴더의 것인지 (CSV 기록이 없는 예전 TXT 는 인정)"""
-        raw = view.raw(name)
-        return raw is None or view.matches(raw)
+    @property
+    def is_result_folder(self) -> bool:
+        """지금 연 폴더가 저장 결과 폴더(작업자/, 작업자/review/, 검수자/<상태>/)인지"""
+        return self.src in {os.path.normpath(d) for d in self.worker_dirs() + self.reviewer_dirs()}
+
+    def folder_label(self) -> str:
+        """화면 표시용 '연 폴더' 이름: 결과 폴더면 작업자/review 처럼, 아니면 '원본'"""
+        return self.rel(self.src) if self.is_result_folder else "원본"
 
     def resolve_label(self, name: str):
-        """(txt 경로 또는 None, 출처 설명) — 다른 이미지 폴더의 결과는 건너뜀"""
-        txt = self._txt(name)
-        candidates = []
-        if self.is_reviewer and self._belongs(self.reviewer_store, name):
-            for d in self.reviewer_dirs():
-                candidates.append((os.path.join(d, txt), self.rel(d)))
-        if self._belongs(self.worker_store, name):
-            candidates.append((os.path.join(self.worker_dir, txt), self.rel(self.worker_dir)))
-        candidates.append((os.path.join(self.src, txt), "원본"))
-        for path, label in candidates:
-            if os.path.exists(path):
-                return path, label
+        """(txt 경로 또는 None, 출처 설명)
+        지금 연 폴더 안의 같은 이름 TXT 만 사용한다. 다른 폴더(작업자/·검수자/·원본)의 라벨은 불러오지 않음
+            원본 폴더를 열면        → 원본 폴더의 TXT
+            작업자/ 를 열면         → 작업자/ 의 TXT
+            작업자/review/ 를 열면  → 작업자/review/ 의 TXT (리뷰노트는 이름이 달라 섞이지 않음)"""
+        path = os.path.join(self.src, self._txt(name))
+        if os.path.exists(path):
+            return path, self.folder_label()
         return None, "없음"
+
+    def saved_elsewhere(self, name: str):
+        """원본 등 결과 폴더가 아닌 곳을 열었는데, 이 이미지가 이미 내 역할 폴더에 저장돼 있으면 그 폴더(상대 경로)
+        → 원본 모습만 보이는 상태에서 저장하면 이전 작업을 덮어쓰게 되므로 확인용"""
+        if self.is_result_folder:
+            return None
+        m = self.own_store.get(name)
+        if not (m and m.status):
+            return None
+        return self.rel(self.target_dir(m.status))
+
+    def display_meta(self, name: str):
+        """화면 표시용 기록 (상태 배지, 검수 상태, 작업자/검수자 이름, Scene, Note, 필터, Validation)
+        결과 폴더를 열었을 때만 돌려주고, 원본 폴더에서는 None → 다른 폴더의 저장 결과를 표시하지 않음"""
+        return self.effective_meta(name) if self.is_result_folder else None
+
+    def display_own_meta(self, name: str):
+        """display_meta 와 같은 규칙으로 '내 역할' 기록만"""
+        return self.own_meta(name) if self.is_result_folder else None
+
+    folder_meta = display_meta      # Validation 에서 쓰던 이름 (호환)
 
     def overwrite_conflict(self, name: str):
         """내 역할 폴더에 '다른 이미지 폴더'의 같은 이름 결과가 있으면 그 source, 없으면 None"""
@@ -222,20 +252,31 @@ class Workspace:
         return None
 
     # ------------------------------------------------------------ 작업자 이슈 노트 (메모장)
-    def issue_note_path(self, name: str) -> str:
-        """작업자/이슈노트/<이미지이름>.txt"""
-        return os.path.join(self.worker_dir, C.ISSUE_NOTE_DIR, os.path.splitext(name)[0] + ".txt")
+    def issue_note_path(self, name: str, status: str = "") -> str:
+        """작업자 노트 위치
+            REVIEW 체크 → 작업자/review/<이미지이름>_리뷰노트.txt  (이미지·라벨과 같은 폴더)
+            그 외      → 작업자/이슈노트/<이미지이름>.txt"""
+        stem = os.path.splitext(name)[0]
+        if status == "REVIEW":
+            return os.path.join(self.worker_review_dir, stem + C.REVIEW_NOTE_SUFFIX + ".txt")
+        return os.path.join(self.worker_dir, C.ISSUE_NOTE_DIR, stem + ".txt")
 
     def save_issue_note(self, meta) -> str | None:
         """Issue/Note 내용을 메모장 파일로 저장. 내용이 비었으면 기존 파일 삭제. 저장 경로 반환"""
-        path = self.issue_note_path(meta.filename)
+        path = self.issue_note_path(meta.filename, meta.status)
         note = (meta.note or "").strip()
+        # REVIEW ↔ EDITED 로 바뀌었으면 다른 폴더의 이전 노트 삭제 (항상 한 곳에만 존재)
+        for st in ("REVIEW", ""):
+            other = self.issue_note_path(meta.filename, st)
+            if other != path and os.path.exists(other):
+                os.remove(other)
         if not note:
             if os.path.exists(path):
                 os.remove(path)
             return None
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        text = ("[작업 이슈 노트]\n"
+        title = "[작업 리뷰 노트]" if meta.status == "REVIEW" else "[작업 이슈 노트]"
+        text = (f"{title}\n"
                 f"이미지      : {meta.filename}\n"
                 f"이미지 폴더 : {meta.source or self.src}\n"
                 f"작업자      : {meta.assignee}\n"
@@ -257,9 +298,9 @@ class Workspace:
 
     # ------------------------------------------------------------ 저장
     def target_dir(self, status: str) -> str:
-        """저장 폴더 결정: 작업자 → 작업자/, 검수자 → 검수자/<상태>/"""
+        """저장 폴더 결정: 작업자 → 작업자/ (REVIEW 는 작업자/review/), 검수자 → 검수자/<상태>/"""
         if not self.is_reviewer:
-            return self.worker_dir
+            return self.worker_review_dir if status == "REVIEW" else self.worker_dir
         return self.status_dirs.get(status, self.reviewer_dir)
 
     # ------------------------------------------------------------ 3단계 Cross Review
@@ -329,15 +370,15 @@ class Workspace:
             self._copy_image(name, target)
         path = os.path.join(target, self._txt(name))
         save_yolo(path, boxes, W, H)
-        if self.is_reviewer:
-            # 상태가 바뀌었을 때(예: review → pass) 다른 폴더의 이전 결과(TXT·이미지) 제거 → 한 곳에만 존재
-            for d in self.reviewer_dirs():
-                if d == target:
-                    continue
-                old_txt = os.path.join(d, self._txt(name))
-                if os.path.isfile(old_txt):
-                    os.remove(old_txt)
-                self._remove_copy(d, name)
+        # 상태가 바뀌었을 때(예: 작업자 REVIEW → EDITED, 검수자 review → pass)
+        # 다른 폴더의 이전 결과(TXT·이미지 복사본) 제거 → 항상 한 곳에만 존재
+        for d in (self.reviewer_dirs() if self.is_reviewer else self.worker_dirs()):
+            if d == target:
+                continue
+            old_txt = os.path.join(d, self._txt(name))
+            if os.path.isfile(old_txt):
+                os.remove(old_txt)
+            self._remove_copy(d, name)
         return path
 
     def _remove_copy(self, folder: str, name: str) -> None:

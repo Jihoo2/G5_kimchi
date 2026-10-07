@@ -29,7 +29,7 @@ class ValidationMixin:
                 parent=self.root):
             self.save()
         issues = validate_folder(self.image_names, self.ws.resolve_label,
-                                 self.ws.effective_meta, self.ws.output_dirs())
+                                 self.ws.folder_meta, [self.ws.src])   # 연 폴더 기준으로 검사
         self._show_validation(issues)
 
     def _show_validation(self, issues):
