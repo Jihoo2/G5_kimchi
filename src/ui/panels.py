@@ -122,4 +122,5 @@ class PanelMixin:
             f"status     = {self.status_var.get() or '(저장 시 자동)'}\n"
             f"assignee   = {self.assignee_var.get() or '-'}\n"
             f"reviewer   = {self.reviewer_var.get() or '-'}\n"
+            f"reviewer2  = {self.reviewer2_var.get() or '-'}\n"
             f"scene_type = {self.scene_var.get() or '(저장 시 자동)'}"))

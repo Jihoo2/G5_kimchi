@@ -222,9 +222,10 @@ class LayoutMixin:
             rb.pack(anchor="w", pady=1)
             Tooltip(rb, C.STATUS_DESC[s])
             self.status_radios[s] = rb
-        if self.role != C.ROLE_REVIEWER:
-            for s_ in C.REVIEWER_ONLY_STATUSES:
-                self.status_radios[s_].state(["disabled"])
+        allowed = C.ROLE_STATUSES.get(self.role, ())
+        for s_, rb_ in self.status_radios.items():            # 내 역할이 쓸 수 없는 상태는 비활성화
+            if s_ not in allowed:
+                rb_.state(["disabled"])
         self.save_dir_lbl = tk.Label(c4.body, text="", bg=C.COLOR_PANEL, fg=C.COLOR_MUTED,
                                      font=FONTS["small"], justify="left")
         self.save_dir_lbl.pack(anchor="w", pady=(4, 0))
@@ -240,8 +241,11 @@ class LayoutMixin:
         tk.Label(c5.body, text="검수자 :", bg=C.COLOR_PANEL).grid(row=1, column=0, sticky="w", pady=3)
         ttk.Entry(c5.body, textvariable=self.reviewer_var, state="readonly", width=12).grid(
             row=1, column=1, sticky="w", pady=3)
+        tk.Label(c5.body, text="2차 검수자 :", bg=C.COLOR_PANEL).grid(row=2, column=0, sticky="w", pady=3)
+        ttk.Entry(c5.body, textvariable=self.reviewer2_var, state="readonly", width=12).grid(
+            row=2, column=1, sticky="w", pady=3)
         login_row = tk.Frame(c5.body, bg=C.COLOR_PANEL)
-        login_row.grid(row=2, column=0, columnspan=2, sticky="we", pady=(6, 0))
+        login_row.grid(row=3, column=0, columnspan=2, sticky="we", pady=(6, 0))
         tk.Label(login_row, text=f"로그인: {self.user_name} ({C.ROLE_LABELS[self.role]})",
                  bg=C.COLOR_PANEL, fg=C.COLOR_ACCENT, font=FONTS["small"]).pack(side="left")
         logout_btn = ttk.Button(login_row, text="로그아웃", style="Small.TButton", command=self.logout)

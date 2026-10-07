@@ -77,6 +77,7 @@ class LabelingApp(LayoutMixin, ShortcutMixin, LoadSaveMixin, NavigationMixin, Bo
         self.scene_var = tk.StringVar()
         self.assignee_var = tk.StringVar()
         self.reviewer_var = tk.StringVar()
+        self.reviewer2_var = tk.StringVar()      # 2차 검수자 이름
         self.warn_unsaved = tk.BooleanVar(value=True)
 
         self._build_window()
