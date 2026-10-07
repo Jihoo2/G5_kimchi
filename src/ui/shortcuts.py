@@ -2,7 +2,7 @@
 
 의사 코드
     _bind_shortcuts():
-        Ctrl+O 폴더 열기 / Ctrl+S 저장 / Ctrl+Z Undo / Ctrl+T HUD / Ctrl+Enter 저장 후 다음
+        Ctrl+O 폴더 열기 / Ctrl+S 저장 / Ctrl+Z Undo / Ctrl+Shift+Z·Ctrl+Y Redo / Ctrl+T HUD / Ctrl+Enter 저장 후 다음
         나머지 키 → _on_key
     _on_key(키):
         글자 입력칸(이름, Note, HUD 편집기)에서 누른 키면 무시
@@ -35,7 +35,7 @@ SHORTCUTS = [
     ("W", "새 BBox 그리기 모드"), ("E", "선택·이동 모드"),
     ("H", "Pan 모드 (휠 클릭·우클릭 드래그는 항상 Pan)"),
     ("0 ~ 6", "선택한 BBox Class 변경 / 그릴 Class 선택"),
-    ("Delete", "선택한 BBox 삭제"), ("Ctrl+Z", "Undo"),
+    ("Delete", "선택한 BBox 삭제"), ("Ctrl+Z", "Undo"), ("Ctrl+Shift+Z / Ctrl+Y", "Redo (Undo 한 것 다시 실행)"),
     ("F", "Fit to Window"), ("+ / -", "Zoom In / Out (마우스 휠도 가능)"),
     ("I", "선택한 BBox 정보 수정 (HUD 더블클릭도 가능)"),
     ("Ctrl+T", "BBox 정보 HUD 표시/숨김"),
@@ -52,12 +52,23 @@ class ShortcutMixin:
             self._bound.append(seq)
 
         for keys, fn in ((("o", "O"), self.open_folder), (("s", "S"), self.save),
-                         (("z", "Z"), self.undo_action), (("t", "T"), self.toggle_overlay)):
+                         (("t", "T"), self.toggle_overlay), (("y", "Y"), self.redo_action)):
             for k in keys:
                 bind(f"<Control-{k}>", lambda e, f=fn: (f(), "break")[1])
+        # Ctrl+Z = Undo, Ctrl+Shift+Z = Redo
+        # (Shift 를 누르면 대문자 Z 로 들어오므로 글자 대신 Shift 눌림 여부로 구분 → Caps Lock 켜져도 정상)
+        for k in ("z", "Z"):
+            bind(f"<Control-{k}>", lambda e: (self._on_ctrl_z(e), "break")[1])
         bind("<Control-Return>", lambda e: (self.save_and_next(), "break")[1])
         bind("<Control-KP_Enter>", lambda e: (self.save_and_next(), "break")[1])
         bind("<Key>", self._on_key)
+
+    def _on_ctrl_z(self, e):
+        """Ctrl+Z → Undo, Ctrl+Shift+Z → Redo"""
+        if e.state & 0x1:          # Shift
+            self.redo_action()
+        else:
+            self.undo_action()
 
     def _on_key(self, e):
         """일반 키 처리: 숫자=Class, Enter=확정, Esc=취소/해제, 방향키=박스 이동 또는 이미지 이동 등

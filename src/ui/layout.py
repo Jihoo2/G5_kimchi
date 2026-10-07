@@ -5,7 +5,7 @@
         창 크기·최소 크기 설정, 닫기(X) → on_close 연결
         툴바 / 가운데 / 오른쪽 패널(스크롤) / 상태바 생성
     _build_toolbar():
-        [폴더 열기][저장][저장 후 다음][이전][다음] | [Fit][Zoom+][Zoom-][Pan][Undo][Validation]
+        [폴더 열기][저장][저장 후 다음][이전][다음] | [Fit][Zoom+][Zoom-][Pan][Undo][Redo][Validation]
         오른쪽: 라벨 도구 [+ 새 BBox][선택·이동][삭제]
     _build_center():
         파일 이름 + 진행률(현재/전체) + 완료율 바
@@ -60,7 +60,7 @@ class LayoutMixin:
         self._build_statusbar()
 
     def _build_toolbar(self):
-        """상단 툴바: 폴더·저장·이동·줌·Pan·Undo·Validation + 라벨 도구(새 BBox / 선택·이동 / 삭제)"""
+        """상단 툴바: 폴더·저장·이동·줌·Pan·Undo·Redo·Validation + 라벨 도구(새 BBox / 선택·이동 / 삭제)"""
         bar = tk.Frame(self.root, bg=C.COLOR_PANEL,
                        highlightbackground=C.COLOR_BORDER, highlightthickness=1)
         bar.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
@@ -84,6 +84,7 @@ class LayoutMixin:
         self.pan_btn = btn(bar, "Pan", lambda: self.set_mode("pan"),
                            "확대 상태에서 화면 이동 (H)\n휠 클릭·우클릭 드래그는 항상 Pan")
         btn(bar, "↶ Undo", self.undo_action, "마지막 작업 취소 (Ctrl+Z)")
+        btn(bar, "↷ Redo", self.redo_action, "취소한 작업 다시 실행 (Ctrl+Shift+Z / Ctrl+Y)")
         btn(bar, "✓ Validation", self.run_validation, "TXT 형식·좌표·Class 오류 검사")
 
         # 라벨 도구 그룹 (디자인의 '+' 버튼)
