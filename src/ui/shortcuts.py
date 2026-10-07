@@ -9,10 +9,10 @@
         숫자 0~6      → Class 지정 (선택 BBox가 있으면 Class 변경)
         Enter         → 미확정 BBox 확정
         방향키         → 선택 BBox 1px 이동 (Shift 10px) / 선택 없으면 ←→ 이미지 이동
-        Ctrl + 방향키  → 선택 BBox 를 그 방향으로 늘림 / Alt + 방향키 → 그 방향 변을 안쪽으로 줄임
-        Tab / Shift+Tab → 라벨 목록 순서로 다음 / 이전 BBox 선택 (마지막 다음은 처음)
-        키패드 . / Ctrl+Space → 선택 BBox 를 화면 가운데로 (줌 유지)
-        Delete / BackSpace → 선택 BBox 삭제 (키패드 Del 은 삭제가 아니라 시점 이동)
+        Ctrl + 방향키  → 선택 BBox 를 그 방향으로 늘림
+        Alt + 방향키   → 반대쪽 변을 화살표 방향으로 밀어 줄임 (Alt+→ 는 왼쪽에서 줄어듦)
+        Tab / Shift+Tab → 다음 / 이전 BBox 선택 + 그 박스로 시점 이동 (줌 유지, 마지막 다음은 처음)
+        Delete / BackSpace → 선택 BBox 삭제
         A / D         → 이전 / 다음 이미지
         W / E / H     → 그리기 / 선택·이동 / Pan 모드
         F, + / -      → Fit, 확대 / 축소
@@ -34,10 +34,9 @@ SHORTCUTS = [
     ("Ctrl+O", "폴더 열기"), ("Ctrl+S", "저장"), ("Ctrl+Enter", "저장 후 다음"),
     ("Enter", "그린 BBox 확정"), ("Esc", "미확정 BBox 취소 / 선택 해제"),
     ("방향키", "선택한 BBox 1px 이동 (Shift: 10px)"),
-    ("Tab / Shift + Tab", "라벨 목록 순서로 다음 / 이전 BBox 선택 (끝에서 처음으로)"),
-    ("키패드 . / Ctrl + Space", "선택한 BBox 를 화면 가운데로 (줌 배율 유지)"),
+    ("Tab / Shift + Tab", "다음 / 이전 BBox 선택 + 그 박스로 시점 이동 (줌 유지, 끝에서 처음으로)"),
     ("Ctrl + 방향키", "선택한 BBox 를 그 방향으로 늘림 (0.0005씩)"),
-    ("Alt + 방향키", "선택한 BBox 의 그 방향 변을 안쪽으로 줄임 (0.0005씩)"),
+    ("Alt + 방향키", "반대쪽 변을 화살표 방향으로 밀어 줄임 (예: Alt+→ 왼쪽에서 줄어듦, 0.0005씩)"),
     ("A / D", "이전 / 다음 이미지 (선택 없을 땐 ← / →도 가능)"),
     ("W", "새 BBox 그리기 모드"), ("E", "선택·이동 모드"),
     ("H", "Pan 모드 (휠 클릭·우클릭 드래그는 항상 Pan)"),
@@ -66,9 +65,6 @@ class ShortcutMixin:
         # (Shift 를 누르면 대문자 Z 로 들어오므로 글자 대신 Shift 눌림 여부로 구분 → Caps Lock 켜져도 정상)
         for k in ("z", "Z"):
             bind(f"<Control-{k}>", lambda e: (self._on_ctrl_z(e), "break")[1])
-        # Ctrl + Space = 선택 박스로 시점 이동 (키패드 . 와 같음, 글자 입력칸에서는 무시)
-        bind("<Control-space>", lambda e: None if isinstance(e.widget, TEXT_INPUTS)
-             else (self.center_on_selected(), "break")[1])
         # Tab = 다음 박스 선택, Shift+Tab = 이전 박스 선택 (원래 Tab 의 포커스 이동 대신)
         bind("<Tab>", lambda e: self._on_tab(e, 1))
         for seq in ("<Shift-Tab>", "<ISO_Left_Tab>"):     # Linux 는 Shift+Tab 이 ISO_Left_Tab 으로 들어옴
@@ -76,27 +72,24 @@ class ShortcutMixin:
                 bind(seq, lambda e: self._on_tab(e, -1))
             except tk.TclError:                          # Windows 에는 ISO_Left_Tab 이 없음
                 pass
-        # Ctrl + 방향키 = 선택 박스를 그 방향으로 늘림, Alt + 방향키 = 그 방향 변을 안쪽으로 줄임
+        # Ctrl + 방향키 = 그 방향 변이 바깥으로 (그 방향으로 늘어남)
+        # Alt  + 방향키 = 반대쪽 변이 화살표 방향으로 (예: Alt+→ 왼쪽 변이 오른쪽으로 → 왼쪽에서 줄어듦)
+        opposite = {"Left": "Right", "Right": "Left", "Up": "Down", "Down": "Up"}
         for k in ("Left", "Right", "Up", "Down"):
             bind(f"<Control-{k}>", lambda e, k=k: self._on_resize_key(e, k, True))
-            bind(f"<Alt-{k}>", lambda e, k=k: self._on_resize_key(e, k, False))
+            bind(f"<Alt-{k}>", lambda e, k=k: self._on_resize_key(e, opposite[k], False))
         bind("<Control-Return>", lambda e: (self.save_and_next(), "break")[1])
         bind("<Control-KP_Enter>", lambda e: (self.save_and_next(), "break")[1])
         bind("<Key>", self._on_key)
 
-    def center_on_selected(self):
-        """선택한 BBox 가 화면 가운데 오도록 시점 이동 (줌 배율 유지)"""
-        if self.selected is None:
-            self.set_message("가운데로 볼 BBox를 먼저 선택하세요. (Tab 으로 선택)", "error")
-            return
-        if self.view.center_on_box(self.selected):
-            self.set_message(f"선택 BBox 로 시점 이동 (줌 {self.view.scale * 100:.0f}% 유지)")
-
     def _on_tab(self, e, step):
-        """Tab / Shift+Tab → 라벨 목록 순서로 박스 선택 (글자 입력칸에서는 원래 Tab 동작 유지)"""
+        """Tab / Shift+Tab → 라벨 목록 순서로 박스 선택 + 그 박스로 시점 이동 (줌 배율 유지)
+        (글자 입력칸에서는 원래 Tab 동작 유지)"""
         if isinstance(e.widget, TEXT_INPUTS):
             return None
         self.select_next_box(step)
+        if self.selected is not None:
+            self.view.center_on_box(self.selected)
         self.view.canvas.focus_set()
         return "break"
 
@@ -153,11 +146,7 @@ class ShortcutMixin:
             self.view.zoom(C.ZOOM_STEP)
         elif k in ("minus", "KP_Subtract"):
             self.view.zoom(1 / C.ZOOM_STEP)
-        elif k in ("KP_Decimal", "KP_Delete", "KP_Separator"):
-            # 키패드 . (Num Lock 꺼지면 KP_Delete 로 들어옴) → 선택 박스로 시점 이동
-            # ※ 키패드 Del 로 박스가 지워지지 않도록 삭제는 일반 Delete / BackSpace 만 사용
-            self.center_on_selected()
-        elif k in ("Delete", "BackSpace"):
+        elif k in ("Delete", "BackSpace", "KP_Delete"):
             self.delete_selected()
         elif k == "Escape":
             if self.pending_index() is not None:
