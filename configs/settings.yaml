@@ -1,0 +1,65 @@
+# ================================================================
+# 프로그램 설정 — 저장 위치, 이미지 복사, 화면 옵션
+# ================================================================
+
+app_title: 교과 7 - 조각김치 이물검출 라벨링 도구
+
+# ---------------------------------------------------------------- 저장 위치
+# 작업자/ · 검수자/ 는 프로젝트 최상위 폴더(main.py 위치)에 하나씩 만들고, 결과를 그 안에 바로 저장한다
+#
+#   kimchi_labeler/                  ← 최상위
+#     ├─ 이물검출_학습데이터1/         이미지 (어디에 있든 상관없음)
+#     ├─ 작업자/                       이미지 복사본 + TXT + label_status.csv + 이슈노트/
+#     └─ 검수자/                       label_status.csv + pass · edited · review · reviewed
+#
+# 어느 이미지 폴더의 결과인지는 label_status.csv 의 source 칸에 기록한다
+#   → 다른 폴더에 같은 이름의 이미지가 있어도 그 폴더의 결과를 불러오지 않음
+#
+# base: project      → main.py 가 있는 최상위 폴더 기준 (기본)
+#       parent       → 이미지 폴더의 바로 위 폴더 기준
+#       image_folder → 이미지 폴더 안에 작업자/ · 검수자/ 생성
+# path: 기준 폴더에서의 상대 경로 ("." = 기준 폴더 바로 안)
+# per_dataset: true 로 바꾸면 작업자/ · 검수자/ 안을 이미지 폴더 경로별 하위 폴더로 나눔 (기본 false)
+output:
+  base: project
+  path: "."
+  per_dataset: false
+
+folders:
+  worker: 작업자            # 작업자 저장 폴더
+  reviewer: 검수자          # 검수자 저장 폴더 (label_status.csv 위치)
+  status:                   # 검수자/ 아래 상태별 하위 폴더
+    PASS: pass
+    EDITED: edited
+    REVIEW: review
+    REVIEWED: reviewed
+
+status_csv: label_status.csv   # 역할 폴더마다 생성되는 검수 기록 파일 이름
+issue_note_dir: 이슈노트         # 작업자가 Issue/Note 에 적은 내용을 메모장(.txt)으로 저장하는 폴더 (작업자/ 안)
+worker_review_dir: review       # 작업자가 REVIEW 로 저장하면 작업자/ 아래 이 폴더에 이미지 + 라벨 + 리뷰노트 저장
+review_note_suffix: _리뷰노트    # 리뷰 노트 파일 이름 = <이미지이름><이 글자>.txt (YOLO 라벨 txt 와 구분)
+
+# ---------------------------------------------------------------- 이미지 복사 (원본은 항상 그대로)
+copy_image:
+  worker: true                         # 작업자/ 에 원본 이미지 복사본 저장
+  reviewer: false                      # true 로 바꾸면 검수자 edited/ · review/ 에도 복사
+  reviewer_no_image_statuses: [PASS, REVIEWED]   # reviewer 가 true 여도 이 상태는 TXT만
+
+# ---------------------------------------------------------------- 이미지 파일
+image_exts: [.jpg, .jpeg, .png, .bmp]
+
+# ---------------------------------------------------------------- 화면 · 편집
+view:
+  thumb_width: 150          # 하단 썸네일 크기(px)
+  thumb_height: 100
+  thumb_cache_max: 300      # 메모리에 보관할 썸네일 최대 개수
+  zoom_step: 1.25           # 휠 한 칸 / Zoom 버튼 배율
+  zoom_min: 0.05
+  zoom_max: 30.0
+  min_box_px: 3             # 이보다 작은 BBox 는 추가하지 않음 (원본 픽셀 기준)
+  undo_limit: 100           # 이미지당 Undo 최대 횟수
+
+# ---------------------------------------------------------------- 폰트 (설치된 것 중 앞에서부터 사용)
+fonts:
+  ui: [NanumGothic, NanumBarunGothic, Noto Sans CJK KR, Noto Sans KR, Malgun Gothic, UnDotum, DejaVu Sans]
+  mono: [D2Coding, NanumGothicCoding, DejaVu Sans Mono, Monospace]

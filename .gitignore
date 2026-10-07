@@ -1,39 +1,6 @@
-# Python
+.venv/
+__pycache__/
+작업자/
+검수자/
 
-pycache/ _.pyc_.pyo
-
-# Virtual Environment
-
-.venv/ venv/
-
-# VS Code
-
-.vscode/
-
-# Jupyter
-
-.ipynb_checkpoints/
-
-# OS
-
-.DS_Store Thumbs.db
-
-# Dataset
-
-data/raw/ data/train/ data/val/ data/test/
-
-# Model Weight
-
-_.pt_.onnx *.engine
-
-# Training outputs
-
-runs/
-
-# Logs
-
-*.log
-
-# Cache
-
-.cache/
+이물검출_학습데이터*/
