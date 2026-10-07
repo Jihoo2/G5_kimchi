@@ -13,7 +13,7 @@ from tkinter import messagebox, ttk
 
 from src import config as C
 from src.ui.theme import FONTS
-from src.validation.validator import validate_folder
+from src.validation.validator import CATEGORIES, validate_folder
 
 
 class ValidationMixin:
@@ -33,29 +33,56 @@ class ValidationMixin:
         self._show_validation(issues)
 
     def _show_validation(self, issues):
-        """Validation 결과 창 (항목 더블클릭 → 해당 이미지로 이동)"""
+        """Validation 결과 창
+            위: 오류·경고·참고 건수 + 항목별 건수
+            항목 필터: 원하는 검사 항목만 골라 보기 (예: 'JPG는 있는데 TXT 없음' 만)
+            표: 파일 / 줄 / 수준 / 항목 / 내용, 더블클릭 → 해당 이미지로 이동"""
         win = tk.Toplevel(self.root)
         win.title("Validation 결과")
-        win.geometry("820x480")
+        win.geometry("980x560")
         win.transient(self.root)
         win.configure(bg=C.COLOR_PANEL)
 
         n_err = sum(1 for i in issues if i["level"] == "ERROR")
-        n_warn = len(issues) - n_err
-        summary = (f"검사 이미지 {len(self.image_names)}장   오류 {n_err}건   경고 {n_warn}건"
-                   if issues else f"검사 이미지 {len(self.image_names)}장   문제 없음 ✓")
+        n_warn = sum(1 for i in issues if i["level"] == "WARN")
+        n_info = sum(1 for i in issues if i["level"] == "INFO")
+        if issues:
+            summary = (f"검사 이미지 {len(self.image_names)}장   오류 {n_err}건   경고 {n_warn}건   "
+                       f"참고 {n_info}건")
+        else:
+            summary = f"검사 이미지 {len(self.image_names)}장   문제 없음 ✓"
         tk.Label(win, text=summary, bg=C.COLOR_PANEL, font=FONTS["title"],
-                 fg=C.COLOR_DANGER if n_err else (C.COLOR_TEXT if n_warn else C.COLOR_SUCCESS)
+                 fg=C.COLOR_DANGER if n_err else (C.COLOR_TEXT if issues else C.COLOR_SUCCESS)
                  ).pack(anchor="w", padx=12, pady=(10, 2))
-        tk.Label(win, text="항목을 더블클릭하면 해당 이미지로 이동합니다.", bg=C.COLOR_PANEL,
-                 fg=C.COLOR_MUTED, font=FONTS["small"]).pack(anchor="w", padx=12, pady=(0, 6))
+
+        # 항목별 건수 (CATEGORIES 순서, 0건 항목도 표시해서 무엇을 검사했는지 보이게)
+        counts = {c: 0 for c in CATEGORIES}
+        for it in issues:
+            counts[it["category"]] = counts.get(it["category"], 0) + 1
+        grid = tk.Frame(win, bg=C.COLOR_PANEL)
+        grid.pack(anchor="w", padx=12, pady=(4, 6))
+        for i, (cat, n) in enumerate(counts.items()):
+            tk.Label(grid, text=f"{cat}  {n}", bg=C.COLOR_PANEL, font=FONTS["small"],
+                     fg=(C.COLOR_TEXT if n else C.COLOR_MUTED)).grid(
+                row=i // 4, column=i % 4, sticky="w", padx=(0, 22), pady=1)
+
+        bar = tk.Frame(win, bg=C.COLOR_PANEL)
+        bar.pack(fill="x", padx=12, pady=(0, 6))
+        tk.Label(bar, text="항목 보기", bg=C.COLOR_PANEL, font=FONTS["small"]).pack(side="left")
+        options = ["전체"] + [c for c in counts if counts[c]]
+        cat_var = tk.StringVar(value="전체")
+        combo = ttk.Combobox(bar, textvariable=cat_var, values=options, state="readonly",
+                             width=26, font=FONTS["small"])
+        combo.pack(side="left", padx=(6, 12))
+        tk.Label(bar, text="항목을 더블클릭하면 해당 이미지로 이동합니다.", bg=C.COLOR_PANEL,
+                 fg=C.COLOR_MUTED, font=FONTS["small"]).pack(side="left")
 
         frame = tk.Frame(win, bg=C.COLOR_PANEL)
         frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
-        cols = ("file", "line", "level", "msg")
+        cols = ("file", "line", "level", "category", "msg")
         tree = ttk.Treeview(frame, columns=cols, show="headings")
-        for col, text, width in (("file", "파일", 230), ("line", "줄", 50),
-                                 ("level", "수준", 70), ("msg", "내용", 430)):
+        for col, text, width in (("file", "파일", 230), ("line", "줄", 45), ("level", "수준", 60),
+                                 ("category", "항목", 170), ("msg", "내용", 420)):
             tree.heading(col, text=text)
             tree.column(col, width=width, anchor="center" if col in ("line", "level") else "w")
         sb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
@@ -64,9 +91,20 @@ class ValidationMixin:
         sb.pack(side="right", fill="y")
         tree.tag_configure("ERROR", foreground=C.COLOR_DANGER)
         tree.tag_configure("WARN", foreground="#B45309")
-        for it in issues:
-            tree.insert("", "end", values=(it["file"], it["line"], it["level"], it["msg"]),
-                        tags=(it["level"],))
+        tree.tag_configure("INFO", foreground=C.COLOR_MUTED)
+        level_name = {"ERROR": "오류", "WARN": "경고", "INFO": "참고"}
+
+        def fill(_e=None):
+            tree.delete(*tree.get_children())
+            want = cat_var.get()
+            for it in issues:
+                if want != "전체" and it["category"] != want:
+                    continue
+                tree.insert("", "end", tags=(it["level"],), values=(
+                    it["file"], it["line"], level_name.get(it["level"], it["level"]),
+                    it["category"], it["msg"]))
+        combo.bind("<<ComboboxSelected>>", fill)
+        fill()
 
         def jump(_e=None):
             sel = tree.selection()
