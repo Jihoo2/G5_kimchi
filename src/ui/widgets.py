@@ -107,13 +107,16 @@ def make_card(parent, title: str) -> tk.Frame:
 class ScrollableFrame(tk.Frame):
     """세로로 내용이 넘칠 때만 스크롤바가 나타나는 프레임. 자식은 .inner 에 배치"""
 
-    def __init__(self, master, bg=C.COLOR_BG):
-        """캔버스 안에 inner 프레임을 넣고 크기 변경 감지"""
+    def __init__(self, master, bg=C.COLOR_BG, fill_width: bool = False):
+        """캔버스 안에 inner 프레임을 넣고 크기 변경 감지
+        fill_width=True: 내용 폭을 프레임 폭에 맞춤 (분할 창에서 폭을 바꾸면 내용도 함께 넓어지고 좁아짐)"""
         super().__init__(master, bg=bg)
+        self.fill_width = fill_width
+        self._width_set = False
         self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0, bd=0)
         self.vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
         self.inner = tk.Frame(self.canvas, bg=bg)
-        self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
+        self._win = self.canvas.create_window(0, 0, window=self.inner, anchor="nw")
         self.canvas.configure(yscrollcommand=self.vsb.set)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.inner.bind("<Configure>", self._update)
@@ -121,8 +124,16 @@ class ScrollableFrame(tk.Frame):
 
     def _update(self, _e=None):
         """스크롤 영역 갱신, 넘칠 때만 스크롤바 표시"""
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"),
-                              width=self.inner.winfo_reqwidth())
+        if self.fill_width:
+            if not self._width_set:                      # 처음 한 번만 내용 폭으로 시작
+                self.canvas.configure(width=self.inner.winfo_reqwidth())
+                self._width_set = True
+            w = self.canvas.winfo_width()
+            if w > 1:
+                self.canvas.itemconfigure(self._win, width=w)
+        else:
+            self.canvas.configure(width=self.inner.winfo_reqwidth())
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         need = self.inner.winfo_reqheight() > self.canvas.winfo_height() > 1
         if need and not self.vsb.winfo_ismapped():
             self.vsb.pack(side="right", fill="y", before=self.canvas)

@@ -44,18 +44,23 @@ class LayoutMixin:
 
         self._build_toolbar()
 
-        main = tk.Frame(r, bg=C.COLOR_BG)
+        # 가운데 | 오른쪽 패널 — 사이 구분선을 좌우로 끌어 오른쪽 패널 폭 조절
+        main = tk.PanedWindow(r, orient="horizontal", bg=C.COLOR_BORDER, bd=0,
+                              sashwidth=6, sashrelief="flat", opaqueresize=False,
+                              sashcursor="sb_h_double_arrow")
         main.grid(row=1, column=0, sticky="nsew", padx=8)
-        main.columnconfigure(0, weight=1)
-        main.rowconfigure(0, weight=1)
+        self.main_pane = main
 
         center = tk.Frame(main, bg=C.COLOR_BG)
-        center.grid(row=0, column=0, sticky="nsew")
         self._build_center(center)
 
-        right = ScrollableFrame(main)
-        right.grid(row=0, column=1, sticky="ns", padx=(8, 0))
+        right = ScrollableFrame(main, fill_width=True)
         self._build_right(right.inner)
+
+        main.add(center, minsize=500, stretch="always")      # 창 크기가 바뀌면 가운데가 늘어남
+        main.add(right, minsize=340, stretch="never")
+        r.update_idletasks()                                 # 오른쪽 패널 처음 폭 = 내용 폭
+        main.paneconfigure(right, width=right.inner.winfo_reqwidth() + 20)
 
         self._build_statusbar()
 
@@ -121,13 +126,19 @@ class LayoutMixin:
         self.pct_lbl.pack(side="left", padx=(6, 0))
         Tooltip(self.progress, "라벨 저장이 완료된 이미지 비율")
 
-        self.view = ImageCanvas(center, self)
-        self.view.grid(row=1, column=0, sticky="nsew", pady=6)
+        # 이미지 화면 / 썸네일 목록 — 사이 구분선을 위아래로 끌어 이미지 화면 높이 조절
+        split = tk.PanedWindow(center, orient="vertical", bg=C.COLOR_BORDER, bd=0,
+                               sashwidth=6, sashrelief="flat", opaqueresize=False,
+                               sashcursor="sb_v_double_arrow")
+        split.grid(row=1, column=0, sticky="nsew", pady=(6, 4))
+        self.center_split = split
 
-        self.strip_card = make_card(center, "이미지 목록 (0개)")
-        self.strip_card.grid(row=2, column=0, sticky="ew", pady=(0, 4))
+        self.view = ImageCanvas(split, self)
+        self.strip_card = make_card(split, "이미지 목록 (0개)")
         self.thumbs = ThumbnailStrip(self.strip_card.body, self)
         self.thumbs.pack(fill="x")
+        split.add(self.view, minsize=200, stretch="always")     # 창 크기가 바뀌면 이미지 화면이 늘어남
+        split.add(self.strip_card, minsize=48, stretch="never")  # 끝까지 줄이면 제목만 남음
 
     def _build_right(self, right):
         # 1) 클래스 선택
@@ -193,7 +204,7 @@ class LayoutMixin:
                                          ("pos", "위치 (x, y, w, h)", 140, "center"),
                                          ("state", "상태", 56, "center")):
             self.tree.heading(col, text=text)
-            self.tree.column(col, width=width, anchor=anchor, stretch=False)
+            self.tree.column(col, width=width, anchor=anchor, stretch=(col == "cls"))   # 패널을 넓히면 클래스 칸이 늘어남
         tsb = ttk.Scrollbar(tf, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=tsb.set)
         self.tree.pack(side="left", fill="x", expand=True)
