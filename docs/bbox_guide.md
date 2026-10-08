@@ -11,7 +11,7 @@
 - 객체와 관계없는 배경(김치)을 지나치게 많이 넣지 않습니다.
 - 가려진 객체는 **보이는 범위**를 기준으로 그립니다.
 - **하나의 BBox 에는 하나의 객체**만 넣습니다.
-- 판단이 어려우면 임의로 그리지 않고 **REVIEW** 로 보냅니다.
+- 판단이 어려우면 임의로 그리지 않고 Issue/Note 해당 사항 기입 후 REVIEW
 
 ---
 
@@ -22,12 +22,7 @@
 | 객체의 가장 바깥 픽셀에 맞닿게 | 주변 김치를 많이 포함 (너무 큼) |
 | 네 변 모두 객체 끝에서 1~2px 이내 | 객체 일부가 박스 밖으로 잘림 (너무 작음) |
 
-```
-GOOD                BAD (너무 큼)            BAD (너무 작음)
-┌───────┐           ┌──────────────────┐        ┌─────┐
-│ 객체  │           │      객체        │       객│체   │
-└───────┘           └──────────────────┘        └─────┘
-```
+![외곽 밀착 GOOD / BAD 예시](images/bbox_fit_good_bad.png)
 
 **프로그램에서 맞추는 방법**
 
@@ -49,15 +44,18 @@ GOOD                BAD (너무 큼)            BAD (너무 작음)
 
 - 서로 겹쳐 있어도 각각 구분할 수 있으면 **객체마다 별도 BBox** 를 그립니다. 박스끼리 겹쳐도 괜찮습니다.
   - 예: 나뭇가지 위에 비닐 조각 → Class 2 박스 1개 + Class 1 박스 1개
+
+![겹친 객체 예시](images/bbox_overlap.png)
+
 - 같은 객체에 박스가 두 번 그려지지 않게 합니다. Validation '**중복 의심 BBox**' (같은 Class, 겹침 90% 이상) 로 검사합니다.
-- 어디까지가 한 객체인지 나눌 수 없으면 REVIEW (`object_separation_ambiguous`)
+- 어디까지가 한 객체인지 나눌 수 없으면 Issue/Note 해당 사항 기입 후 REVIEW (`object_separation_ambiguous`)
 
 ---
 
 ## 4. 작은 객체
 
 - 작아도 **Class 를 알아볼 수 있고 검출 대상이면** BBox 를 그립니다.
-- 확대해도 점·얼룩처럼 형태를 알 수 없으면 그리지 않거나 REVIEW (`too_small_to_identify`)
+- 확대해도 점·얼룩처럼 형태를 알 수 없으면 그리지 않거나 Issue/Note 해당 사항 기입 후 REVIEW (`too_small_to_identify`)
 - 실수로 클릭만 해서 생긴 아주 작은 박스는 Validation '**Width/Height 비정상 — 너무 작음**' 경고로 찾아서 지웁니다.
 
 ---
@@ -66,7 +64,7 @@ GOOD                BAD (너무 큼)            BAD (너무 작음)
 
 - 김치·다른 객체에 일부가 가려져도 Class 를 알 수 있으면 **보이는 범위** 로 그립니다.
 - 가려진 부분을 상상해서 박스를 키우지 않습니다.
-- Class 를 알 수 없을 만큼 가려졌으면 REVIEW (`occlusion_ambiguous`)
+- Class 를 알 수 없을 만큼 가려졌으면 Issue/Note 해당 사항 기입 후 REVIEW (`occlusion_ambiguous`)
 
 ---
 
@@ -87,7 +85,7 @@ GOOD                BAD (너무 큼)            BAD (너무 작음)
 
 ## 8. 판단이 어려운 경우
 
-범위나 객체 구분이 애매하면 임의로 정하지 않고 **REVIEW** 로 저장하고, Issue/Note 에 이유를 적습니다.
+범위나 객체 구분이 애매하면 임의로 정하지 않고 Issue/Note 해당 사항 기입 후 REVIEW
 
 | 이유 코드 | 상황 |
 |---|---|
@@ -107,5 +105,5 @@ GOOD                BAD (너무 큼)            BAD (너무 작음)
 
 나뭇가지 + 비닐이 겹침 → 각각 식별 가능 → 박스 2개 (Class 2, Class 1)
 
-작은 갈색 물체 → 객체인지 얼룩인지 불명확 → 박스 확정하지 않음 → REVIEW (too_small_to_identify)
+작은 갈색 물체 → 객체인지 얼룩인지 불명확 → 박스 확정하지 않음 → Issue/Note 해당 사항 기입 후 REVIEW (too_small_to_identify)
 ```
