@@ -11,6 +11,7 @@
     3. qa_summary.py      → reports/qa_summary.md                                             (산출물 8)
     4. test_report.py     → reports/test_report.md                                            (산출물 9)
     5. build_handoff.py   → docs/subject08_handoff.md                                         (산출물 11)
+    7. package_submission.py → submission/ (11개 산출물 폴더 + 00_제출목록.md), submission.zip
     6. export_evidence.py → evidence/ (FINAL 구조·수량, 대표 이미지·TXT)  — LMS 제출용, Git 제외   (산출물 3 증빙)
 원본 이미지·TXT 와 작업자/·검수자/·2차검수자/ 결과 폴더는 읽기만 하고 수정하지 않는다.
 data/merged/ 가 있으면 그 합본을, 없으면 프로젝트 결과 폴더를 읽는다 (tools/common.py results_mode).
@@ -22,6 +23,7 @@ import build_final
 import build_handoff
 import build_manifest
 import export_evidence
+import package_submission
 import qa_summary
 import test_report
 from common import ROOT
@@ -38,5 +40,6 @@ if __name__ == "__main__":
     test_report.build()
     build_handoff.build()
     export_evidence.build()
+    package_submission.build()
     print("=" * 60)
     print("완료. 최종 판정:", "QA 완료" if qa and qa["done"] else "QA 미완료 — reports/qa_summary.md 확인")
