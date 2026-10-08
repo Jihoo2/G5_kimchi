@@ -8,3 +8,11 @@ __pycache__/
 2차검수자/
 data/
 evidence/
+
+# 제출용 (실제 이미지·영상 포함)
+captures/
+submission/
+submission.zip
+*Zone.Identifier
+subject07_kimchi_labeling/
+subject07_kimchi_labeling.zip
