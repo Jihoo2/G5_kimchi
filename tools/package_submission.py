@@ -161,6 +161,8 @@ def item01():
     cap_md = "\n".join(f"![{c}](captures/{c})" for c in caps) if caps else \
         "> `captures/` 폴더에 아래 3장을 넣고 이 스크립트를 다시 실행하면 여기에 자동으로 표시됩니다.\n" \
         "> `01_load.png`, `02_edit.png`, `03_validation.png`"
+    vids = sorted(f for f in os.listdir(os.path.join(out, "captures")) if f.lower().endswith((".mp4", ".webm")))
+    vid_md = "\n\n".join(f"## 시연 영상\n\n![{v}](captures/{v})\n\n재생이 안 되면 [{v} 열기](captures/{v})" for v in vids)
     md = f"""# 1. 라벨링 프로그램
 
 조각김치 이물검출 이미지 900장과 기존 YOLO TXT 를 불러와 BBox·Class 를 확인·수정하고,
@@ -172,7 +174,7 @@ def item01():
 |---|---|
 | 실행 가능한 프로그램 전체 | `labeling_program.zip` (main.py, src/ {n_py}개 모듈, configs/, requirements.txt) |
 | 실행 화면 캡처 | `captures/` |
-| 시연 영상 | 발표 시 직접 시연 (또는 `captures/demo.mp4`) |
+| 시연 영상 | `captures/demo.mp4` (아래 '시연 영상'에서 바로 재생) |
 
 ## 실행 방법 (WSL Ubuntu)
 
@@ -209,6 +211,8 @@ python3 main.py
 ## 실행 화면
 
 {cap_md}
+
+{vid_md}
 
 ## 시연 순서 (1~2분)
 
