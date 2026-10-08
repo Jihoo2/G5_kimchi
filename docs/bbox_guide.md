@@ -71,8 +71,17 @@
 ## 6. 하나의 객체는 하나의 BBox
 
 - 하나의 긴 나뭇가지·파 줄기 → BBox 1개 (잘려 보인다고 2개로 나누지 않음)
+
+![길고 가는 객체 예시](images/bbox_long_object.png)
+
 - 실제로 떨어져 있는 별개의 조각이면 각각 BBox
+
+![객체마다 박스 1개 GOOD / BAD 예시](images/bbox_one_object.png)
+
 - 변색(Class 5)은 이어진 변색 영역 하나를 1개 박스로, 떨어진 반점들은 각각
+- 변색 영역 주변의 정상 배추까지 넓게 잡지 않습니다.
+
+![변색 영역 GOOD / BAD 예시](images/bbox_discolor_good_bad.png)
 
 ---
 
