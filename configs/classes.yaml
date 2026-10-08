@@ -1,0 +1,39 @@
+# ================================================================
+# 클래스 정의 — 라벨링할 이물 종류
+# ================================================================
+# id      : YOLO TXT 에 저장되는 번호. 0부터 빈 번호 없이 순서대로 적어야 함
+# name    : 화면에 표시되는 이름
+# color   : BBox 색상 (#RRGGBB)
+# enabled : false 면 선택할 수 없는 클래스
+#           (기존 라벨에 들어 있으면 회색으로 표시되고, Validation 에서 오류로 잡힘)
+#
+# ※ 번호를 바꾸면 이미 저장된 TXT 의 의미가 달라지므로, 작업 도중에는 이름·색상만 수정할 것
+classes:
+  - id: 0
+    name: 나뭇잎·종이류
+    color: "#2E9E3F"
+    enabled: true
+  - id: 1
+    name: 플라스틱류·돌·금속류
+    color: "#E53935"
+    enabled: true
+  - id: 2
+    name: 나뭇가지류
+    color: "#1E6FE8"
+    enabled: true
+  - id: 3
+    name: 벌레류
+    color: "#9C3FE0"
+    enabled: true
+  - id: 4
+    name: 고무장갑 (사용 안 함)
+    color: "#9E9E9E"
+    enabled: false
+  - id: 5
+    name: 병해·갈변
+    color: "#FB8C00"
+    enabled: true
+  - id: 6
+    name: 파·고추          # 0번(초록)과 구분되도록 청록
+    color: "#00897B"
+    enabled: true
