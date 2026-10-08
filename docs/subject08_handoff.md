@@ -1,17 +1,17 @@
 # 교과 8 Handoff — 조각김치 이물검출 FINAL Dataset
 
-> 생성: 2026-10-08 11:02 · `python tools/build_handoff.py`
+> 생성: 2026-10-08 11:43 · `python tools/build_handoff.py`
 
 ## 1. 한눈에 보기
 
-| 항목 | 내용 |
-|---|---|
-| FINAL 이미지 | 900장 (`data/final/images/`) |
-| FINAL YOLO TXT | 900개 (`data/final/labels/`) |
-| 전체 BBox | 4569개 |
-| Empty Label (배경 이미지) | 0장 — 빈 TXT, 이물 없음으로 학습 |
-| 최종 QA | 최종 판정: QA 완료 — 교과 8 학습 데이터로 사용 가능 |
-| 이미지 원본 | 저장소에 올리지 않음 (데이터 보안) — 팀 공유 위치에서 전달 |
+| 항목                   | 내용                                                  |
+| -------------------- | --------------------------------------------------- |
+| FINAL 이미지            | 900장 (`data/final/images/`)                         |
+| FINAL YOLO TXT       | 900개 (`data/final/labels/`)                         |
+| 전체 BBox              | 4569개                                               |
+| Empty Label (배경 이미지) | 0장 — 빈 TXT, 이물 없음으로 학습                              |
+| 최종 QA                | 최종 판정: QA 완료 — 교과 8 학습 데이터로 사용 가능                   |
+| 이미지 원본               | 저장소에 올리지 않음 (데이터 보안) — 팀 의 각각의 이메일을 받아 개개인에게 직접 전달  |
 
 ## 2. 폴더 구조
 
